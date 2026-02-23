@@ -64,6 +64,31 @@ export default function HomePage() {
   const [timeLeft, setTimeLeft] = useState("");
 
   const autoPlayRef = useRef<NodeJS.Timeout | null>(null);
+  const word = "DOMINATE.";
+  const [text, setText] = useState("");
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (index < word.length) {
+      const timeout = setTimeout(() => {
+        setText((prev) => prev + word[index]);
+        setIndex(index + 1);
+      }, 120); // speed
+
+      return () => clearTimeout(timeout);
+    }
+  }, [index]);
+
+  useEffect(() => {
+    // loop animation
+    if (index === word.length) {
+      const reset = setTimeout(() => {
+        setText("");
+        setIndex(0);
+      }, 2000);
+      return () => clearTimeout(reset);
+    }
+  }, [index]);
 
   // autoplay slider
   useEffect(() => {
@@ -128,7 +153,10 @@ export default function HomePage() {
               <div className="max-w-xl">
                 <h1 className="text-6xl tracking-wider leading-tight">
                   SURVIVE. <br />
-                  <span className="text-[#F2AA00]">DOMINATE.</span> <br />
+                  <span className="text-[#F2AA00]">
+                    {text}
+                    <span className="animate-pulse">|</span> <br />
+                  </span>
                   CONQUER.
                 </h1>
 
@@ -264,7 +292,7 @@ export default function HomePage() {
       <section className="px-6">
         <TournamentModes />
       </section>
-      
+
     </div>
   );
 }
