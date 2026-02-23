@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import HeaderWrapper from "./components/HeaderWrapper";
+import FooterWrapper from "./components/FooterWrapper";
 
 const pubgFont = localFont({
   src: [
@@ -29,6 +30,8 @@ export default function RootLayout({
       <body className="antialiased">
         <HeaderWrapper />
         {children}
+        {/* Footer */}
+        <FooterWrapper />
       </body>
     </html>
   );
