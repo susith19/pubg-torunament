@@ -201,7 +201,7 @@ export default function Signup() {
 
       localStorage.setItem("token", token);
       localStorage.setItem("name", res.user.displayName || "User");
-      window.location.href = "/dashboard";
+      window.location.href = "/";
     } catch (e: any) {
       setError(e.message || "Google sign up failed.");
     } finally {
