@@ -1,9 +1,9 @@
 import Database from "better-sqlite3";
 import path from "path/win32";
 
-const db = new Database(path.join(process.cwd(), "db.sqlite"), {
-  verbose: console.log,
-});
+
+const dbPath = path.join(process.cwd(), "db.sqlite");
+const db = new Database(dbPath);
 
 /* =========================
    USERS
