@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/requireAuth";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 // ✅ GET PROFILE
 export async function GET(req: NextRequest) {
   const { user, error } = await requireAuth(req);
   if (error) return error;
 
-  const fullUser = db
-    .prepare("SELECT * FROM users WHERE id = ? AND is_deleted = 0")
-    .get(user.id);
+  const fullUser = await prisma.user.findFirst({
+    where: {
+      id: user.id,
+      is_deleted: false,
+    },
+  });
 
   return NextResponse.json(fullUser);
 }
@@ -21,11 +24,16 @@ export async function PUT(req: NextRequest) {
 
   const { name, phone } = await req.json();
 
-  db.prepare(`
-    UPDATE users
-    SET name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).run(name, phone, user.id);
+  await prisma.user.update({
+    where: {
+      id: user.id,
+    },
+    data: {
+      name,
+      phone,
+      updated_at: new Date(), // optional (Prisma auto-handles if @updatedAt)
+    },
+  });
 
   return NextResponse.json({ message: "Updated" });
 }
@@ -35,9 +43,14 @@ export async function DELETE(req: NextRequest) {
   const { user, error } = await requireAuth(req);
   if (error) return error;
 
-  db.prepare(`
-    UPDATE users SET is_deleted = 1 WHERE id = ?
-  `).run(user.id);
+  await prisma.user.update({
+    where: {
+      id: user.id,
+    },
+    data: {
+      is_deleted: true,
+    },
+  });
 
   return NextResponse.json({ message: "Account deleted" });
 }

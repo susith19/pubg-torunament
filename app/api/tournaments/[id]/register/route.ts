@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/requireAuth";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import fs from "fs";
 import path from "path";
 
@@ -45,9 +45,9 @@ export async function POST(
     }
 
     // 🔍 Tournament check
-    const tournament: any = db
-      .prepare("SELECT * FROM tournaments WHERE id=?")
-      .get(id);
+    const tournament = await prisma.tournament.findUnique({
+      where: { id },
+    });
 
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
@@ -58,9 +58,12 @@ export async function POST(
     }
 
     // ❌ Duplicate join
-    const exists = db.prepare(`
-      SELECT id FROM registrations WHERE user_id=? AND tournament_id=?
-    `).get(user.id, id);
+    const exists = await prisma.registration.findFirst({
+      where: {
+        user_id: user.id,
+        tournament_id: id,
+      },
+    });
 
     if (exists) {
       return NextResponse.json({ error: "Already joined" }, { status: 400 });
@@ -81,63 +84,63 @@ export async function POST(
 
     const fileUrl = `/uploads/payments/${fileName}`;
 
-    // ✅ CREATE REGISTRATION
-    const reg = db.prepare(`
-      INSERT INTO registrations
-      (user_id, tournament_id, team_name, team_tag, captain_name, captain_player_id)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      user.id,
-      id,
-      team_name,
-      team_tag,
-      captain.player_name,
-      captain.player_id
-    );
+    // ✅ CREATE REGISTRATION with PLAYERS in transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create registration
+      const reg = await tx.registration.create({
+        data: {
+          user_id: user.id,
+          tournament_id: id,
+          team_name,
+          team_tag,
+          captain_name: captain.player_name,
+          captain_player_id: captain.player_id,
+          status: "pending",
+        },
+      });
 
-    const registrationId = reg.lastInsertRowid;
+      // Create players
+      await tx.player.createMany({
+        data: players.map((p: any) => ({
+          registration_id: reg.id,
+          player_name: p.player_name,
+          player_id: p.player_id,
+          is_captain: p.is_captain ? 1 : 0,
+        })),
+      });
 
-    // ✅ INSERT PLAYERS
-    for (const p of players) {
-      db.prepare(`
-        INSERT INTO players
-        (registration_id, player_name, player_id, is_captain)
-        VALUES (?, ?, ?, ?)
-      `).run(
-        registrationId,
-        p.player_name,
-        p.player_id,
-        p.is_captain ? 1 : 0
-      );
-    }
+      // Create payment
+      const payment = await tx.payment.create({
+        data: {
+          user_id: user.id,
+          tournament_id: id,
+          amount: tournament.entry_fee,
+          method: "UPI",
+          transaction_id,
+          screenshot_url: fileUrl,
+          status: "pending",
+        },
+      });
 
-    // ✅ CREATE PAYMENT
-    const payment = db.prepare(`
-      INSERT INTO payments
-      (user_id, tournament_id, amount, method, transaction_id, screenshot_url, status)
-      VALUES (?, ?, ?, 'UPI', ?, ?, 'pending')
-    `).run(
-      user.id,
-      id,
-      tournament.entry_fee,
-      transaction_id,
-      fileUrl
-    );
+      // Link payment to registration
+      const updatedReg = await tx.registration.update({
+        where: { id: reg.id },
+        data: { payment_id: payment.id },
+      });
 
-    // ✅ LINK PAYMENT
-    db.prepare(`
-      UPDATE registrations SET payment_id=? WHERE id=?
-    `).run(payment.lastInsertRowid, registrationId);
+      // Update tournament filled slots
+      await tx.tournament.update({
+        where: { id },
+        data: { filled_slots: { increment: 1 } },
+      });
 
-    // ✅ UPDATE SLOT
-    db.prepare(`
-      UPDATE tournaments SET filled_slots = filled_slots + 1 WHERE id=?
-    `).run(id);
+      return { registration: updatedReg, payment };
+    });
 
     return NextResponse.json({
       success: true,
-      registration_id: registrationId,
-      payment_id: payment.lastInsertRowid,
+      registration_id: result.registration.id,
+      payment_id: result.payment.id,
     });
 
   } catch (err) {

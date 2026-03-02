@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/requireAuth";
 
 export async function POST(req: NextRequest) {
@@ -17,16 +17,24 @@ export async function POST(req: NextRequest) {
     }
 
     // Check available balance
-    const winPts = (db.prepare(`
-      SELECT COALESCE(SUM(pts.points),0) AS t FROM points pts
-      WHERE pts.user_id = ? AND pts.type IN ('match_win','referral')
-    `).get(user.id) as any).t;
+    const winPtsAgg = await prisma.point.aggregate({
+      _sum: { points: true },
+      where: {
+        user_id: user.id,
+        type: { in: ["match_win", "referral"] },
+      },
+    });
 
-    const redeemedPts = (db.prepare(`
-      SELECT COALESCE(SUM(amount),0) AS t FROM redeems
-      WHERE user_id = ? AND status IN ('approved','pending')
-    `).get(user.id) as any).t;
+    const redeemedAgg = await prisma.redeem.aggregate({
+      _sum: { amount: true },
+      where: {
+        user_id: user.id,
+        status: { in: ["approved", "pending"] },
+      },
+    });
 
+    const winPts = winPtsAgg._sum.points || 0;
+    const redeemedPts = redeemedAgg._sum.amount || 0;
     const available = winPts - redeemedPts;
 
     if (points > available) {
@@ -34,14 +42,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Insert redeem request
-    const result = db.prepare(`
-      INSERT INTO redeems (user_id, amount, method, detail, status, created_at)
-      VALUES (?, ?, ?, ?, 'pending', datetime('now'))
-    `).run(user.id, points, method, detail);
+    const redeem = await prisma.redeem.create({
+      data: {
+        user_id: user.id,
+        amount: points,
+        method,
+        detail,
+        status: "pending",
+      },
+    });
 
     return NextResponse.json({
       success: true,
-      redeemId: result.lastInsertRowid,
+      redeemId: redeem.id,
       message: "Redeem request submitted. Processed in 2–24 hours.",
     });
 

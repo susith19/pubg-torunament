@@ -1,25 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
-  const { uid, email } = await req.json();
+  try {
+    const { uid, email } = await req.json();
 
-  if (!uid || !email) {
-    return NextResponse.json({ error: "Missing data" }, { status: 400 });
+    if (!uid || !email) {
+      return NextResponse.json(
+        { error: "Missing data" },
+        { status: 400 }
+      );
+    }
+
+    // 🔍 Check if user exists
+    const existing = await prisma.user.findUnique({
+      where: { uid },
+    });
+
+    if (!existing) {
+      // ✅ Create user
+      await prisma.user.create({
+        data: {
+          uid,
+          email,
+          role: "user",
+        },
+      });
+    }
+
+    return NextResponse.json({ message: "User synced" });
+
+  } catch (err) {
+    console.error(err);
+
+    return NextResponse.json(
+      { error: "Sync failed" },
+      { status: 500 }
+    );
   }
-
-  // 🔍 Check if user exists
-  const existing = db
-    .prepare("SELECT * FROM users WHERE firebase_uid = ?")
-    .get(uid);
-
-  if (!existing) {
-    // ✅ Insert new user
-    db.prepare(`
-      INSERT INTO users (firebase_uid, email, role)
-      VALUES (?, ?, 'user')
-    `).run(uid, email);
-  }
-
-  return NextResponse.json({ message: "User synced" });
 }

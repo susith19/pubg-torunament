@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 export async function PUT(
   req: NextRequest,
@@ -10,91 +10,101 @@ export async function PUT(
   if (error) return error;
 
   const { id } = await context.params;
-  const body   = await req.json();
+  const body = await req.json();
+  const tournamentId = Number(id);
 
-  // ── Full update (Create/Edit form) ────────────────────────
-  // If all core fields are present, run the full UPDATE
+  // ── FULL UPDATE ───────────────────────────────
   const isFull =
-    "title"       in body &&
-    "game"        in body &&
-    "mode"        in body &&
-    "map"         in body &&
-    "entry_fee"   in body &&
+    "title" in body &&
+    "game" in body &&
+    "mode" in body &&
+    "map" in body &&
+    "entry_fee" in body &&
     "total_slots" in body &&
-    "start_date"  in body &&
-    "status"      in body;
+    "start_date" in body &&
+    "status" in body;
 
-  if (isFull) {
-    const result = db.prepare(`
-      UPDATE tournaments
-      SET title=?, game=?, mode=?, map=?,
-          entry_fee=?, prize_pool=?, total_slots=?,
-          start_date=?, status=?
-      WHERE id = ?
-    `).run(
-      body.title,
-      body.game,
-      body.mode,
-      body.map,
-      body.entry_fee,
-      body.prize_pool ?? 0,
-      body.total_slots,
-      body.start_date,
-      body.status,
-      Number(id),
+  try {
+    if (isFull) {
+      const updated = await prisma.tournament.update({
+        where: { id: tournamentId },
+        data: {
+          title: body.title,
+          game: body.game,
+          mode: body.mode,
+          map: body.map,
+          entry_fee: body.entry_fee,
+          prize_pool: body.prize_pool ?? 0,
+          total_slots: body.total_slots,
+          start_date: body.start_date ? new Date(body.start_date) : null,
+          status: body.status,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        updated_by: user.email,
+        data: updated,
+      });
+    }
+
+    // ── PARTIAL UPDATE ───────────────────────────
+    const ALLOWED_PARTIAL = ["room_id", "room_pass", "status"];
+
+    const data: any = {};
+
+    for (const key of ALLOWED_PARTIAL) {
+      if (key in body) {
+        data[key] = body[key];
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json(
+        { error: "No valid fields to update" },
+        { status: 400 }
+      );
+    }
+
+    const updated = await prisma.tournament.update({
+      where: { id: tournamentId },
+      data,
+    });
+
+    return NextResponse.json({
+      success: true,
+      updated_by: user.email,
+      data: updated,
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Tournament not found or update failed" },
+      { status: 400 }
     );
-
-    if (result.changes === 0) {
-      return NextResponse.json({ error: "No row updated" }, { status: 400 });
-    }
-
-    return NextResponse.json({ success: true, updated_by: user.email });
   }
-
-  // ── Partial update (Room ID / Password only) ──────────────
-  const ALLOWED_PARTIAL = ["room_id", "room_pass", "status"];
-
-  const sets:   string[] = [];
-  const values: any[]    = [];
-
-  for (const key of ALLOWED_PARTIAL) {
-    if (key in body) {
-      sets.push(`${key} = ?`);
-      values.push(body[key]);
-    }
-  }
-
-  if (sets.length === 0) {
-    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
-  }
-
-  values.push(Number(id));
-
-  const result = db
-    .prepare(`UPDATE tournaments SET ${sets.join(", ")} WHERE id = ?`)
-    .run(...values);
-
-  if (result.changes === 0) {
-    return NextResponse.json({ error: "No row updated" }, { status: 400 });
-  }
-
-  return NextResponse.json({ success: true, updated_by: user.email });
 }
 
+
+// ── DELETE ─────────────────────────────────────
 export async function DELETE(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  context: { params: Promise<{ id: string }> }
 ) {
   const { error } = await requireAdmin(req);
   if (error) return error;
 
   const { id } = await context.params;
 
-  const result = db.prepare("DELETE FROM tournaments WHERE id = ?").run(id);
+  try {
+    await prisma.tournament.delete({
+      where: { id: Number(id) },
+    });
 
-  if (result.changes === 0) {
-    return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json(
+      { error: "Tournament not found" },
+      { status: 404 }
+    );
   }
-
-  return NextResponse.json({ success: true });
 }

@@ -140,7 +140,7 @@ function RoomReveal({ room }: { room: { id: string; pass: string } | null }) {
 }
 
 // ── MATCH CARD ─────────────────────────────────────────────
-function  MatchCard({ m, index }: { m: any; index: number }) {
+function MatchCard({ m, index }: { m: any; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const t        = m.tournament;
   const mapKey   = t.map?.toLowerCase() ?? "erangel";
@@ -151,7 +151,7 @@ function  MatchCard({ m, index }: { m: any; index: number }) {
 
   return (
     <div
-      className="bg-[#0b0b0b] border border-gray-800 rounded-xl overflow-hidden hover:border-gray-700 transition-all duration-300 text-lg"
+      className="bg-[#0b0b0b] border border-gray-800 rounded-xl overflow-hidden hover:border-gray-700 transition-all duration-300"
       style={{ animationDelay: `${index * 80}ms` }}
     >
       {/* MAP BANNER */}
@@ -185,8 +185,8 @@ function  MatchCard({ m, index }: { m: any; index: number }) {
 
         {/* title bottom */}
         <div className="absolute bottom-3 left-4 right-4">
-          <p className="text-white text-md tracking-wide truncate">{t.name}</p>
-          <p className="text-gray-400 text-[12px] mt-0.5">{t.map} · {t.mode} · {t.platform}</p>
+          <p className="text-white text-sm tracking-wide truncate">{t.name}</p>
+          <p className="text-gray-400 text-[10px] mt-0.5">{t.map} · {t.mode} · {t.platform}</p>
         </div>
       </div>
 
@@ -194,15 +194,15 @@ function  MatchCard({ m, index }: { m: any; index: number }) {
       <div className="p-4 space-y-4">
 
         {/* INFO ROW */}
-        <div className="grid grid-cols-3 gap-2 text-lg">
+        <div className="grid grid-cols-3 gap-2">
           {[
             { label: "Entry Fee", val: t.fee },
             { label: "Team",      val: m.teamName },
-            { label: "Txn ID",    val: m.transactionId ?? "—" },
+            { label: "Txn ID",    val: m.payment?.transactionId ?? "—" },
           ].map((r, i) => (
             <div key={i} className="bg-black border border-gray-800 rounded-lg px-3 py-2">
-              <p className="text-[12px] text-gray-600 tracking-widest uppercase mb-1">{r.label}</p>
-              <p className="text-[14px] text-white truncate">{r.val}</p>
+              <p className="text-[9px] text-gray-600 tracking-widest uppercase mb-1">{r.label}</p>
+              <p className="text-[11px] text-white truncate">{r.val}</p>
             </div>
           ))}
         </div>
@@ -380,15 +380,15 @@ export default function MyMatchesPage() {
         </div>
 
         {/* FILTER PILLS */}
-        <div className={`flex gap-2 items-center flex-wrap transition-all duration-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`} style={{ transitionDelay: "80ms" }}>
+        <div className={`flex gap-2 flex-wrap transition-all duration-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`} style={{ transitionDelay: "80ms" }}>
           {(["all", "approved", "pending", "rejected"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-4 py-1.5 text-sm tracking-widest items-center rounded-lg border transition-all duration-150 ${filter === f ? "bg-[#F2AA00] text-black border-[#F2AA00]" : "border-gray-800 text-gray-500 hover:border-gray-700 hover:text-gray-300"}`}
+              className={`px-4 py-1.5 text-xs tracking-widest rounded-lg border transition-all duration-150 ${filter === f ? "bg-[#F2AA00] text-black border-[#F2AA00]" : "border-gray-800 text-gray-500 hover:border-gray-700 hover:text-gray-300"}`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
-              <span className={`ml-1.5 text-[12px] px-1.5 py-0.5 rounded-full item-center ${filter === f ? "bg-black/20" : "bg-gray-800"}`}>
+              <span className={`ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full ${filter === f ? "bg-black/20" : "bg-gray-800"}`}>
                 {counts[f]}
               </span>
             </button>

@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { adminAuth } from "./firebaseAdmin";
-import { db } from "./db";
+import { prisma } from "./prisma";
 
 export interface AuthUser {
-  id: number;
+  id: string;
   uid: string;
   email: string;
   role: string;
@@ -25,9 +25,17 @@ export async function getAuthUser(req: NextRequest): Promise<AuthUser | null> {
     const decoded = await adminAuth.verifyIdToken(token);
 
     // ✅ Get user from DB
-    const user = db
-      .prepare("SELECT * FROM users WHERE uid = ?")
-      .get(decoded.uid);
+    const user = await prisma.user.findUnique({
+      where: { uid: decoded.uid },
+      select: {
+        id: true,
+        uid: true,
+        email: true,
+        role: true,
+        referral_code: true,
+        referral_count: true,
+      },
+    });
 
     if (!user) return null;
 

@@ -1,18 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/requireAuth";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   const { user, error } = await requireAuth(req);
   if (error) return error;
 
-  const data = db.prepare(`
-    SELECT r.*, t.title, t.game, t.start_date
-    FROM registrations r
-    JOIN tournaments t ON r.tournament_id = t.id
-    WHERE r.user_id = ?
-    ORDER BY r.created_at DESC
-  `).all(user.id);
+  const rows = await prisma.registration.findMany({
+    where: {
+      user_id: user.id,
+    },
+    include: {
+      tournament: {
+        select: {
+          title: true,
+          game: true,
+          start_date: true,
+        },
+      },
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+  });
+
+  // Flatten result to match your SQL output
+  const data = rows.map((r) => ({
+    ...r,
+    title: r.tournament?.title,
+    game: r.tournament?.game,
+    start_date: r.tournament?.start_date,
+  }));
 
   return NextResponse.json({ success: true, data });
 }

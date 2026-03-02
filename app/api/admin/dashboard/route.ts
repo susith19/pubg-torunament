@@ -1,80 +1,138 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   const { error } = await requireAdmin(req);
   if (error) return error;
 
-  // ── STAT CARDS ──────────────────────────────────────────
+  const now = new Date();
 
-  // Total users
-  const totalUsers = (db.prepare(`SELECT COUNT(*) AS c FROM users WHERE is_deleted = 0 AND role != 'admin'`).get() as any).c;
-  const lastMonthUsers = (db.prepare(`
-    SELECT COUNT(*) AS c FROM users
-    WHERE is_deleted = 0
-    AND created_at >= datetime('now', '-60 days')
-    AND created_at <  datetime('now', '-30 days')
-  `).get() as any).c;
-  const thisMonthUsers = (db.prepare(`
-    SELECT COUNT(*) AS c FROM users
-    WHERE is_deleted = 0 AND created_at >= datetime('now', '-30 days')
-  `).get() as any).c;
+  // Dates
+  const last30 = new Date(now);
+  last30.setDate(now.getDate() - 30);
 
-  // Active tournaments this week
-  const activeTournaments = (db.prepare(`
-    SELECT COUNT(*) AS c FROM tournaments
-    WHERE status IN ('open', 'upcoming')
-  `).get() as any).c;
-  const lastWeekTournaments = (db.prepare(`
-    SELECT COUNT(*) AS c FROM tournaments
-    WHERE status IN ('open', 'upcoming')
-    AND created_at >= datetime('now', '-14 days')
-    AND created_at <  datetime('now', '-7 days')
-  `).get() as any).c;
-  const thisWeekTournaments = (db.prepare(`
-    SELECT COUNT(*) AS c FROM tournaments
-    WHERE status IN ('open', 'upcoming')
-    AND created_at >= datetime('now', '-7 days')
-  `).get() as any).c;
+  const last60 = new Date(now);
+  last60.setDate(now.getDate() - 60);
 
-  // Revenue (sum of verified payments)
-  const totalRevenue = (db.prepare(`
-    SELECT COALESCE(SUM(amount), 0) AS r FROM payments WHERE status = 'verified'
-  `).get() as any).r;
-  const lastMonthRevenue = (db.prepare(`
-    SELECT COALESCE(SUM(amount), 0) AS r FROM payments
-    WHERE status = 'verified'
-    AND created_at >= datetime('now', '-60 days')
-    AND created_at <  datetime('now', '-30 days')
-  `).get() as any).r;
-  const thisMonthRevenue = (db.prepare(`
-    SELECT COALESCE(SUM(amount), 0) AS r FROM payments
-    WHERE status = 'verified'
-    AND created_at >= datetime('now', '-30 days')
-  `).get() as any).r;
+  const last7 = new Date(now);
+  last7.setDate(now.getDate() - 7);
 
-  // Pending redeems
-  const pendingRedeems = (db.prepare(`
-    SELECT COUNT(*) AS c FROM redeems WHERE status = 'pending'
-  `).get() as any).c;
-  const lastWeekRedeems = (db.prepare(`
-    SELECT COUNT(*) AS c FROM redeems
-    WHERE status = 'pending'
-    AND created_at >= datetime('now', '-14 days')
-    AND created_at <  datetime('now', '-7 days')
-  `).get() as any).c;
+  const last14 = new Date(now);
+  last14.setDate(now.getDate() - 14);
 
-  // Helper to compute change label
+  // ── USERS ─────────────────────────────
+
+  const totalUsers = await prisma.user.count({
+    where: {
+      is_deleted: 0,
+      role: { not: "admin" },
+    },
+  });
+
+  const lastMonthUsers = await prisma.user.count({
+    where: {
+      is_deleted: 0,
+      created_at: {
+        gte: last60,
+        lt: last30,
+      },
+    },
+  });
+
+  const thisMonthUsers = await prisma.user.count({
+    where: {
+      is_deleted: 0,
+      created_at: {
+        gte: last30,
+      },
+    },
+  });
+
+  // ── TOURNAMENTS ───────────────────────
+
+  const activeTournaments = await prisma.tournament.count({
+    where: {
+      status: { in: ["open", "upcoming"] },
+    },
+  });
+
+  const lastWeekTournaments = await prisma.tournament.count({
+    where: {
+      status: { in: ["open", "upcoming"] },
+      created_at: {
+        gte: last14,
+        lt: last7,
+      },
+    },
+  });
+
+  const thisWeekTournaments = await prisma.tournament.count({
+    where: {
+      status: { in: ["open", "upcoming"] },
+      created_at: {
+        gte: last7,
+      },
+    },
+  });
+
+  // ── REVENUE ───────────────────────────
+
+  const totalRevenueAgg = await prisma.payment.aggregate({
+    _sum: { amount: true },
+    where: { status: "verified" },
+  });
+
+  const lastMonthRevenueAgg = await prisma.payment.aggregate({
+    _sum: { amount: true },
+    where: {
+      status: "verified",
+      created_at: { gte: last60, lt: last30 },
+    },
+  });
+
+  const thisMonthRevenueAgg = await prisma.payment.aggregate({
+    _sum: { amount: true },
+    where: {
+      status: "verified",
+      created_at: { gte: last30 },
+    },
+  });
+
+  const totalRevenue = totalRevenueAgg._sum.amount || 0;
+  const lastMonthRevenue = lastMonthRevenueAgg._sum.amount || 0;
+  const thisMonthRevenue = thisMonthRevenueAgg._sum.amount || 0;
+
+  // ── REDEEMS ───────────────────────────
+
+  const pendingRedeems = await prisma.redeem.count({
+    where: { status: "pending" },
+  });
+
+  const lastWeekRedeems = await prisma.redeem.count({
+    where: {
+      status: "pending",
+      created_at: {
+        gte: last14,
+        lt: last7,
+      },
+    },
+  });
+
+  // ── HELPERS ───────────────────────────
+
   const pctChange = (now: number, prev: number) => {
-    if (prev === 0) return now > 0 ? { label: `+${now}`, up: true } : { label: "0", up: true };
+    if (prev === 0) return { label: `+${now}`, up: true };
     const diff = ((now - prev) / prev) * 100;
     return { label: `${diff >= 0 ? "+" : ""}${diff.toFixed(1)}%`, up: diff >= 0 };
   };
+
   const absChange = (now: number, prev: number) => {
     const diff = now - prev;
     return { label: `${diff >= 0 ? "+" : ""}${diff}`, up: diff >= 0 };
   };
+
+  // ── STATS ─────────────────────────────
 
   const stats = [
     {
@@ -107,76 +165,32 @@ export async function GET(req: NextRequest) {
     },
   ];
 
-  // ── WEEKLY SIGNUP BAR CHART ──────────────────────────────
-  // Last 7 days, one count per day
-  const signupsRaw = db.prepare(`
-    SELECT
-      date(created_at) AS day,
-      COUNT(*) AS count
-    FROM users
-    WHERE created_at >= datetime('now', '-7 days')
-    AND is_deleted = 0 AND role != 'admin'
-    GROUP BY date(created_at)
-    ORDER BY day ASC
-  `).all() as { day: string; count: number }[];
+  // ── RECENT TOURNAMENTS ───────────────
 
-  // Fill in missing days with 0
-  const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const barData = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    const dateStr = d.toISOString().split("T")[0];
-    const found = signupsRaw.find((r) => r.day === dateStr);
-    return {
-      day: dayLabels[d.getDay()],
-      value: found ? found.count : 0,
-    };
+  const recentTournaments = await prisma.tournament.findMany({
+    orderBy: { created_at: "desc" },
+    take: 5,
   });
 
-  // ── RECENT TOURNAMENTS ───────────────────────────────────
-  const recentTournaments = db.prepare(`
-    SELECT
-      title   AS name,
-      map,
-      mode,
-      filled_slots || '/' || total_slots AS slots,
-      status,
-      CASE WHEN entry_fee = 0 THEN 'Free' ELSE '₹' || entry_fee END AS fee
-    FROM tournaments
-    ORDER BY created_at DESC
-    LIMIT 5
-  `).all() as any[];
-
-  // Normalize status to match your UI
-  const statusLabel: Record<string, string> = {
-    open:     "Open",
-    upcoming: "Open",
-    full:     "Full",
-    closed:   "Closed",
-    live:     "Live",
-  };
-  const normalizedTournaments = recentTournaments.map((t) => ({
-    ...t,
-    status: statusLabel[t.status?.toLowerCase()] ?? t.status,
+  const normalizedTournaments = recentTournaments.map((t : any) => ({
+    name: t.title,
+    map: t.map,
     mode: t.mode ? t.mode.charAt(0).toUpperCase() + t.mode.slice(1) : "—",
+    slots: `${t.filled_slots}/${t.total_slots}`,
+    status: t.status,
+    fee: t.entry_fee === 0 ? "Free" : `₹${t.entry_fee}`,
   }));
 
-  // ── RECENT USERS ─────────────────────────────────────────
-  const recentUsersRaw = db.prepare(`
-    SELECT
-      name,
-      email,
-      role,
-      created_at AS joinedAt
-    FROM users
-    WHERE is_deleted = 0 AND role != 'admin'
-    ORDER BY created_at DESC
-    LIMIT 5
-  `).all() as any[];
+  // ── RECENT USERS ─────────────────────
 
-  function relativeTime(iso: string) {
-    if (!iso) return "—";
-    const diff = Date.now() - new Date(iso.replace(" ", "T") + "Z").getTime();
+  const recentUsersRaw = await prisma.user.findMany({
+    where: { is_deleted: 0, role: { not: "admin" } },
+    orderBy: { created_at: "desc" },
+    take: 5,
+  });
+
+  function relativeTime(date: Date) {
+    const diff = Date.now() - new Date(date).getTime();
     const m = Math.floor(diff / 60000);
     if (m < 1) return "just now";
     if (m < 60) return `${m} min ago`;
@@ -185,58 +199,16 @@ export async function GET(req: NextRequest) {
     return `${Math.floor(h / 24)}d ago`;
   }
 
-  const recentUsers = recentUsersRaw.map((u) => ({
-    name:   u.name ?? "—",
-    email:  u.email,
-    joined: relativeTime(u.joinedAt),
+  const recentUsers = recentUsersRaw.map((u : any) => ({
+    name: u.name ?? "—",
+    email: u.email,
+    joined: relativeTime(u.created_at),
     status: u.role === "banned" ? "Banned" : "Active",
   }));
 
-  // ── ACTIVITY FEED ────────────────────────────────────────
-  // Merge recent events from multiple tables, sorted by time
-  const newUsers = db.prepare(`
-    SELECT 'user' AS type, name AS label, created_at AS at
-    FROM users WHERE is_deleted = 0
-    ORDER BY created_at DESC LIMIT 3
-  `).all() as any[];
-
-  const newTournaments = db.prepare(`
-    SELECT 'tournament' AS type, title AS label, created_at AS at
-    FROM tournaments
-    ORDER BY created_at DESC LIMIT 3
-  `).all() as any[];
-
-  const recentPayouts = db.prepare(`
-    SELECT 'payout' AS type,
-      '₹' || re.amount || ' payout to ' || u.name AS label,
-      re.created_at AS at
-    FROM redeems re
-    JOIN users u ON u.id = re.user_id
-    WHERE re.status = 'paid'
-    ORDER BY re.created_at DESC LIMIT 2
-  `).all() as any[];
-
-  const bannedUsers = db.prepare(`
-    SELECT 'ban' AS type, 'User ' || name || ' was banned' AS label, updated_at AS at
-    FROM users WHERE role = 'banned' AND is_deleted = 0
-    ORDER BY updated_at DESC LIMIT 2
-  `).all() as any[];
-
-  const allActivity = [
-    ...newUsers.map((r) => ({ ...r, text: `New user ${r.label} registered`, iconKey: "users", gold: false })),
-    ...newTournaments.map((r) => ({ ...r, text: `Tournament '${r.label}' created`, iconKey: "trophy", gold: true })),
-    ...recentPayouts.map((r) => ({ ...r, text: r.label, iconKey: "rupee", gold: true })),
-    ...bannedUsers.map((r) => ({ ...r, text: r.label, iconKey: "shield", gold: false })),
-  ]
-    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-    .slice(0, 6)
-    .map((r) => ({ text: r.text, time: relativeTime(r.at), iconKey: r.iconKey, gold: r.gold }));
-
   return NextResponse.json({
     stats,
-    barData,
     recentTournaments: normalizedTournaments,
     recentUsers,
-    activity: allActivity,
   });
 }

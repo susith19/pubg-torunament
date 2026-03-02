@@ -1,118 +1,157 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+
 
 // ── GET — list all awarded points ─────────────────────────
 export async function GET(req: NextRequest) {
-  const { user, error } = await requireAdmin(req);
+  const { error } = await requireAdmin(req);
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
-  const search     = searchParams.get("search") || "";
+  const search = searchParams.get("search") || "";
   const tournament = searchParams.get("tournament") || "All";
 
-  const conditions: string[] = [];
-  const params: any[]        = [];
+  // ⚠️ reference_id is STRING → registration id
+  const pointsRaw = await prisma.point.findMany({
+    where: {
+      type: "match_win",
+    },
+    orderBy: { created_at: "desc" },
+  });
 
-  if (search) {
-    conditions.push(`(r.team_name LIKE ? OR t.title LIKE ?)`);
-    params.push(`%${search}%`, `%${search}%`);
-  }
+  // Fetch related registrations
+  const registrationIds = pointsRaw.map((p) => Number(p.reference_id));
 
-  if (tournament !== "All") {
-    conditions.push(`t.title = ?`);
-    params.push(tournament);
-  }
+  const registrations = await prisma.registration.findMany({
+    where: {
+      id: { in: registrationIds },
+    },
+    include: {
+      tournament: true,
+    },
+  });
 
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const regMap = new Map(registrations.map((r) => [r.id, r]));
 
-  const awards = db
-    .prepare(
-      `
-      SELECT
-        p.id,
-        r.team_name    AS teamName,
-        t.title        AS tournament,
-        p.reference_id AS position,
-        p.points,
-        p.created_at   AS awardedAt
-      FROM points p
-      JOIN registrations r ON r.id  = CAST(p.reference_id AS INTEGER)
-      JOIN tournaments   t ON t.id  = r.tournament_id
-      ${where}
-      AND p.type = 'match_win'
-      ORDER BY p.created_at DESC
-      `
-    )
-    .all(...params) as any[];
+  // ── FILTER + FORMAT ─────────────────────
+  const awards = pointsRaw
+    .map((p) => {
+      const reg = regMap.get(Number(p.reference_id));
 
-  // summary — always unfiltered
-  const summary = db
-    .prepare(
-      `
-      SELECT
-        COALESCE(SUM(points), 0)  AS totalPoints,
-        COUNT(*)                  AS totalAwards
-      FROM points
-      WHERE type = 'match_win'
-      `
-    )
-    .get() as any;
+      return {
+        id: p.id,
+        teamName: reg?.team_name,
+        tournament: reg?.tournament?.title,
+        position: p.reference_id,
+        points: p.points,
+        awardedAt: p.created_at,
+      };
+    })
+    .filter((a) => {
+      if (search) {
+        return (
+          a.teamName?.toLowerCase().includes(search.toLowerCase()) ||
+          a.tournament?.toLowerCase().includes(search.toLowerCase())
+        );
+      }
+      return true;
+    })
+    .filter((a) => {
+      if (tournament !== "All") {
+        return a.tournament === tournament;
+      }
+      return true;
+    });
 
-  const tournamentList = db
-    .prepare(
-      `
-      SELECT DISTINCT t.title
-      FROM points p
-      JOIN registrations r ON r.id = CAST(p.reference_id AS INTEGER)
-      JOIN tournaments   t ON t.id = r.tournament_id
-      WHERE p.type = 'match_win'
-      ORDER BY t.title
-      `
-    )
-    .all()
-    .map((t: any) => t.title);
+  // ── SUMMARY ─────────────────────────────
+  const summaryAgg = await prisma.point.aggregate({
+    _sum: { points: true },
+    _count: true,
+    where: { type: "match_win" },
+  });
 
-  return NextResponse.json({ awards, summary, tournaments: tournamentList });
+  const summary = {
+    totalPoints: summaryAgg._sum.points || 0,
+    totalAwards: summaryAgg._count,
+  };
+
+  // ── TOURNAMENT LIST ─────────────────────
+  const tournaments = [
+    ...new Set(
+      registrations
+        .map((r) => r.tournament?.title)
+        .filter(Boolean)
+    ),
+  ].sort();
+
+  return NextResponse.json({ awards, summary, tournaments });
 }
 
-// ── POST — award points to a team ─────────────────────────
+
+// ── POST — award points ─────────────────────────
 export async function POST(req: NextRequest) {
-  const { user, error } = await requireAdmin(req);
+  const { error } = await requireAdmin(req);
   if (error) return error;
 
-  const body = await req.json();
-  const { registrationId, position, points } = body;
+  try {
+    const body = await req.json();
+    const { registrationId, position, points } = body;
 
-  if (!registrationId || !position || !points || points <= 0) {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    if (!registrationId || !position || !points || points <= 0) {
+      return NextResponse.json(
+        { error: "Invalid payload" },
+        { status: 400 }
+      );
+    }
+
+    // Get registration
+    const reg = await prisma.registration.findUnique({
+      where: { id: Number(registrationId) },
+    });
+
+    if (!reg) {
+      return NextResponse.json(
+        { error: "Registration not found" },
+        { status: 404 }
+      );
+    }
+
+    // 🔥 TRANSACTION (VERY IMPORTANT)
+    const result = await prisma.$transaction(async (tx) => {
+      // Insert points
+      const point = await tx.point.create({
+        data: {
+          user_id: reg.user_id!,
+          points,
+          type: "match_win",
+          reference_id: String(registrationId),
+        },
+      });
+
+      // Update user total points
+      await tx.user.update({
+        where: { id: reg.user_id! },
+        data: {
+          total_points: {
+            increment: points,
+          },
+        },
+      });
+
+      return point;
+    });
+
+    return NextResponse.json({
+      success: true,
+      id: result.id,
+    });
+
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json(
+      { error: "Failed to award points" },
+      { status: 500 }
+    );
   }
-
-  // Get registration + user
-  const reg = db
-    .prepare(`SELECT * FROM registrations WHERE id = ?`)
-    .get(registrationId) as any;
-
-  if (!reg) {
-    return NextResponse.json({ error: "Registration not found" }, { status: 404 });
-  }
-
-  // Insert into points ledger
-  const result = db
-    .prepare(
-      `INSERT INTO points (user_id, points, type, reference_id)
-       VALUES (?, ?, 'match_win', ?)`
-    )
-    .run(reg.user_id, points, String(registrationId));
-
-  if (result.changes === 0) {
-    return NextResponse.json({ error: "Failed to insert points" }, { status: 500 });
-  }
-
-  // Update user total_points
-  db.prepare(
-    `UPDATE users SET total_points = total_points + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-  ).run(points, reg.user_id);
-
-  return NextResponse.json({ success: true, id: result.lastInsertRowid });
 }

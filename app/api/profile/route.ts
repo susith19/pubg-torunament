@@ -1,69 +1,103 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/requireAuth";
 
 export async function GET(req: NextRequest) {
   const { user, error } = await requireAuth(req);
   if (error) return error;
 
-  // ── PROFILE ───────────────────────────────────────────────
-  const profile = db.prepare(`
-    SELECT id, name, email, phone, referral_code, created_at
-    FROM users WHERE id = ? AND is_deleted = 0
-  `).get(user.id) as any;
+  try {
+    // ── PROFILE ───────────────────────────────────────────────
+    const profile = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        referral_code: true,
+        created_at: true,
+      },
+    });
 
-  if (!profile) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (!profile || profile === null) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
 
-  // ── STATS ─────────────────────────────────────────────────
-  const matchesPlayed = (db.prepare(`
-    SELECT COUNT(*) AS c FROM registrations
-    WHERE user_id = ? AND status = 'approved'
-  `).get(user.id) as any).c;
+    // ── STATS ─────────────────────────────────────────────────
+    const matchesPlayedCount = await prisma.registration.count({
+      where: {
+        user_id: user.id,
+        status: "approved",
+      },
+    });
 
-  const upcomingMatches = (db.prepare(`
-    SELECT COUNT(*) AS c FROM registrations r
-    JOIN tournaments t ON t.id = r.tournament_id
-    WHERE r.user_id = ? AND r.status = 'approved'
-    AND t.status IN ('open','upcoming')
-  `).get(user.id) as any).c;
+    const upcomingMatchesCount = await prisma.registration.count({
+      where: {
+        user_id: user.id,
+        status: "approved",
+        tournament: {
+          status: {
+            in: ["open", "upcoming"],
+          },
+        },
+      },
+    });
 
-  // ── POINTS ────────────────────────────────────────────────
-  const winningPts = (db.prepare(`
-    SELECT COALESCE(SUM(points),0) AS total
-    FROM points WHERE user_id = ? AND type = 'match_win'
-  `).get(user.id) as any).total;
+    // ── POINTS ────────────────────────────────────────────────
+    const winPtsAgg = await prisma.point.aggregate({
+      _sum: { points: true },
+      where: {
+        user_id: user.id,
+        type: "match_win",
+      },
+    });
 
-  const referralPts = (db.prepare(`
-    SELECT COALESCE(SUM(points),0) AS total
-    FROM points WHERE user_id = ? AND type = 'referral'
-  `).get(user.id) as any).total;
+    const referralPtsAgg = await prisma.point.aggregate({
+      _sum: { points: true },
+      where: {
+        user_id: user.id,
+        type: "referral",
+      },
+    });
 
-  const redeemedPts = (db.prepare(`
-    SELECT COALESCE(SUM(amount),0) AS total
-    FROM redeems WHERE user_id = ? AND status = 'approved'
-  `).get(user.id) as any).total;
+    const redeemedPtsAgg = await prisma.redeem.aggregate({
+      _sum: { amount: true },
+      where: {
+        user_id: user.id,
+        status: "approved",
+      },
+    });
 
-  const totalPoints = winningPts + referralPts;
+    const winningPts = winPtsAgg._sum.points || 0;
+    const referralPts = referralPtsAgg._sum.points || 0;
+    const redeemedPts = redeemedPtsAgg._sum.amount || 0;
+    const totalPoints = winningPts + referralPts;
 
-  return NextResponse.json({
-    success: true,
-    profile: {
-      id:            profile.id,
-      name:          profile.name,
-      email:         profile.email,
-      phone:         profile.phone,
-      referralCode:  profile.referral_code,
-      joinedAt:      profile.created_at,
-    },
-    stats: {
-      matchesPlayed,
-      upcomingMatches,
-      totalPoints,
-      winningPoints:  winningPts,
-      referralPoints: referralPts,
-      redeemedPoints: redeemedPts,
-    },
-  });
+    return NextResponse.json({
+      success: true,
+      profile: {
+        id: profile.id,
+        name: profile.name,
+        email: profile.email,
+        phone: profile.phone,
+        referralCode: profile.referral_code,
+        joinedAt: profile.created_at,
+      },
+      stats: {
+        matchesPlayed: matchesPlayedCount,
+        upcomingMatches: upcomingMatchesCount,
+        totalPoints,
+        winningPoints: winningPts,
+        referralPoints: referralPts,
+        redeemedPoints: redeemedPts,
+      },
+    });
+
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 });
+  }
 }
 
 // ── UPDATE PROFILE ────────────────────────────────────────
@@ -73,10 +107,19 @@ export async function PUT(req: NextRequest) {
 
   try {
     const { name, phone } = await req.json();
-    db.prepare(`UPDATE users SET name = ?, phone = ? WHERE id = ?`)
-      .run(name, phone, user.id);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        name,
+        phone,
+      },
+    });
+
     return NextResponse.json({ success: true });
+
   } catch (err) {
+    console.error(err);
     return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
 }

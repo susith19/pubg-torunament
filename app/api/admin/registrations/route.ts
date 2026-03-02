@@ -1,17 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   const { error } = await requireAdmin(req);
   if (error) return error;
 
-  const data = db.prepare(`
-    SELECT r.*, u.email, t.title
-    FROM registrations r
-    JOIN users u ON r.user_id = u.id
-    JOIN tournaments t ON r.tournament_id = t.id
-  `).all();
+  const data = await prisma.registration.findMany({
+    include: {
+      user: {
+        select: {
+          email: true,
+        },
+      },
+      tournament: {
+        select: {
+          title: true,
+        },
+      },
+    },
+  });
 
-  return NextResponse.json({ success: true, data });
+  // Flatten like your SQL result
+  const formatted = data.map((r) => ({
+    ...r,
+    email: r.user?.email,
+    title: r.tournament?.title,
+  }));
+
+  return NextResponse.json({ success: true, data: formatted });
 }

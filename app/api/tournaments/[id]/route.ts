@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(
   req: NextRequest,
@@ -13,56 +13,91 @@ export async function GET(
     }
 
     // ── TOURNAMENT ──────────────────────────────────────────
-    const tournament = db.prepare(`
-      SELECT * FROM tournaments WHERE id = ?
-    `).get(id) as any;
+    const tournament = await prisma.tournament.findUnique({
+      where: { id },
+    });
 
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
     }
 
     // ── REGISTERED TEAMS (approved only) ───────────────────
-    const teams = db.prepare(`
-      SELECT
-        r.id           AS registrationId,
-        r.team_name    AS teamName,
-        r.team_tag     AS teamTag,
-        r.captain_name AS captainName,
-        r.status       AS slotStatus
-      FROM registrations r
-      WHERE r.tournament_id = ?
-      AND   r.status = 'approved'
-      ORDER BY r.created_at ASC
-    `).all(id) as any[];
-
-    const teamsWithPlayers = teams.map((t) => {
-      const players = db.prepare(`
-        SELECT player_name AS name, player_id AS playerId, is_captain AS isCaptain
-        FROM players
-        WHERE registration_id = ?
-        ORDER BY is_captain DESC
-      `).all(t.registrationId) as any[];
-      return { ...t, players };
+    const teams = await prisma.registration.findMany({
+      where: {
+        tournament_id: id,
+        status: "approved",
+      },
+      select: {
+        id: true,
+        team_name: true,
+        team_tag: true,
+        captain_name: true,
+        status: true,
+      },
+      orderBy: { created_at: "asc" },
     });
 
+    const teamsWithPlayers = await Promise.all(
+      teams.map(async (t) => {
+        const players = await prisma.player.findMany({
+          where: { registration_id: t.id },
+          select: {
+            player_name: true,
+            player_id: true,
+            is_captain: true,
+          },
+          orderBy: { is_captain: "desc" },
+        });
+
+        return {
+          registrationId: t.id,
+          teamName: t.team_name,
+          teamTag: t.team_tag,
+          captainName: t.captain_name,
+          slotStatus: t.status,
+          players: players.map((p) => ({
+            name: p.player_name,
+            playerId: p.player_id,
+            isCaptain: p.is_captain === 1,
+          })),
+        };
+      })
+    );
+
     // ── LEADERBOARD ─────────────────────────────────────────
-    const leaderboard = db.prepare(`
-      SELECT
-        r.team_name AS teamName,
-        pt.points,
-        pt.created_at AS awardedAt
-      FROM points pt
-      JOIN registrations r ON r.id = CAST(pt.reference_id AS INTEGER)
-      WHERE r.tournament_id = ?
-      AND   pt.type = 'match_win'
-      ORDER BY pt.points DESC
-      LIMIT 5
-    `).all(id) as any[];
+    const leaderboardData = await prisma.point.findMany({
+      where: {
+        type: "match_win",
+        registration: {
+          tournament_id: id,
+        },
+      },
+      select: {
+        points: true,
+        created_at: true,
+        registration: {
+          select: {
+            team_name: true,
+          },
+        },
+      },
+      orderBy: { points: "desc" },
+      take: 5,
+    });
+
+    const leaderboard = leaderboardData.map((item) => ({
+      teamName: item.registration.team_name,
+      points: item.points,
+      awardedAt: item.created_at,
+    }));
 
     // ── NORMALIZE ───────────────────────────────────────────
     const STATUS_MAP: Record<string, string> = {
-      open: "Open", upcoming: "Open", full: "Full",
-      closed: "Closed", live: "Live",
+      open: "Open",
+      upcoming: "Open",
+      full: "Full",
+      closed: "Closed",
+      live: "Live",
     };
 
     const fillPercent = tournament.total_slots > 0
@@ -72,24 +107,31 @@ export async function GET(
     return NextResponse.json({
       success: true,
       tournament: {
-        ...tournament,
-        slots_left:      tournament.total_slots - tournament.filled_slots,
-        status:          STATUS_MAP[tournament.status?.toLowerCase()] ?? tournament.status,
-        mode:            tournament.mode ? tournament.mode.charAt(0).toUpperCase() + tournament.mode.slice(1) : "—",
-        fee:             tournament.entry_fee ? `₹${tournament.entry_fee}` : "Free",
-        prize:           tournament.prize_pool ? `₹${Number(tournament.prize_pool).toLocaleString("en-IN")}` : "TBA",
-        platform:        tournament.game === "BGMI" ? "Mobile" : "PC",
+        id: tournament.id,
+        title: tournament.title,
+        game: tournament.game,
+        mode: tournament.mode ? tournament.mode.charAt(0).toUpperCase() + tournament.mode.slice(1) : "—",
+        map: tournament.map,
+        status: STATUS_MAP[tournament.status?.toLowerCase()] ?? tournament.status,
+        fee: tournament.entry_fee ? `₹${tournament.entry_fee}` : "Free",
+        prize: tournament.prize_pool ? `₹${Number(tournament.prize_pool).toLocaleString("en-IN")}` : "TBA",
+        platform: tournament.game === "BGMI" ? "Mobile" : "PC",
         fillPercent,
-        slots:           tournament.total_slots,
-        filled:          tournament.filled_slots,
-        startFormatted:  tournament.start_date
-          ? new Date(tournament.start_date.replace(" ", "T")).toLocaleString("en-IN", {
-              day: "numeric", month: "short", year: "numeric",
-              hour: "2-digit", minute: "2-digit", hour12: true,
+        slots: tournament.total_slots,
+        filled: tournament.filled_slots,
+        slots_left: tournament.total_slots - tournament.filled_slots,
+        startFormatted: tournament.start_date
+          ? new Date(tournament.start_date).toLocaleString("en-IN", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
             })
           : "TBA",
       },
-      teams:      teamsWithPlayers,
+      teams: teamsWithPlayers,
       leaderboard,
       totalTeams: teamsWithPlayers.length,
     });

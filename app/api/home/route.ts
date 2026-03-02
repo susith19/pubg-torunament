@@ -1,96 +1,79 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 // Public endpoint — no auth required
 export async function GET() {
   // ── HERO CARD — latest open tournament per game ──────────
-  const heroMatches = db
-    .prepare(
-      `
-      SELECT
-        id, title, game, mode, map,
-        entry_fee  AS fee,
-        prize_pool AS prize,
-        total_slots AS slots,
-        filled_slots AS filled,
-        status,
-        start_date
-      FROM tournaments
-      WHERE status IN ('open','upcoming')
-      ORDER BY start_date ASC
-      LIMIT 10
-      `
-    )
-    .all() as any[];
+  const heroMatches = await prisma.tournament.findMany({
+    where: {
+      status: { in: ["open", "upcoming"] },
+    },
+    orderBy: {
+      start_date: "asc",
+    },
+    take: 10,
+  });
 
-  // One per game (BGMI / PUBG_PC) for the hero card switcher
+  // One per game (BGMI / PUBG_PC)
   const bgmiMatch = heroMatches.find((t) => t.game === "BGMI") ?? null;
   const pubgMatch = heroMatches.find((t) => t.game === "PUBG_PC") ?? null;
 
-  // ── UPCOMING TOURNAMENTS — 6 most recent open/upcoming ──
-  const upcomingRaw = db
-    .prepare(
-      `
-      SELECT
-        id, title, game, mode, map,
-        entry_fee  AS fee,
-        prize_pool AS prize,
-        total_slots AS slots,
-        filled_slots AS filled,
-        status,
-        start_date
-      FROM tournaments
-      WHERE status IN ('open','upcoming','full')
-      ORDER BY start_date ASC
-      LIMIT 6
-      `
-    )
-    .all() as any[];
+  // ── UPCOMING TOURNAMENTS ────────────────────────────────
+  const upcomingRaw = await prisma.tournament.findMany({
+    where: {
+      status: { in: ["open", "upcoming", "full"] },
+    },
+    orderBy: {
+      start_date: "asc",
+    },
+    take: 6,
+  });
 
-  // ── MAP TOP MATCHES — best match per map ─────────────────
-  const mapMatches = db
-    .prepare(
-      `
-      SELECT
-        id, title, game, mode, map,
-        entry_fee  AS fee,
-        prize_pool AS prize,
-        total_slots AS slots,
-        filled_slots AS filled,
-        status,
-        start_date
-      FROM tournaments
-      WHERE map IN ('Erangel','Miramar','Sanhok','Vikendi')
-      AND   status IN ('open','upcoming','full','live')
-      GROUP BY map
-      ORDER BY start_date ASC
-      LIMIT 4
-      `
-    )
-    .all() as any[];
+  // ── MAP TOP MATCHES ─────────────────────────────────────
+  // Prisma doesn't support GROUP BY like SQLite in same way
+  // So we fetch + reduce manually (same output)
+  const mapRaw = await prisma.tournament.findMany({
+    where: {
+      map: { in: ["Erangel", "Miramar", "Sanhok", "Vikendi"] },
+      status: { in: ["open", "upcoming", "full", "live"] },
+    },
+    orderBy: {
+      start_date: "asc",
+    },
+  });
 
-  // ── MODES — count of open tournaments per mode ───────────
-  const modeCounts = db
-    .prepare(
-      `
-      SELECT
-        mode,
-        COUNT(*) AS count
-      FROM tournaments
-      WHERE status IN ('open','upcoming')
-      GROUP BY mode
-      `
-    )
-    .all() as { mode: string; count: number }[];
+  const mapMatchesMap: Record<string, any> = {};
+  for (const t of mapRaw) {
+    if (!mapMatchesMap[t.map]) {
+      mapMatchesMap[t.map] = t;
+    }
+  }
+  const mapMatches = Object.values(mapMatchesMap).slice(0, 4);
+
+  // ── MODES COUNT ─────────────────────────────────────────
+  const modeCountsRaw = await prisma.tournament.groupBy({
+    by: ["mode"],
+    where: {
+      status: { in: ["open", "upcoming"] },
+    },
+    _count: {
+      mode: true,
+    },
+  });
 
   const modeMap: Record<string, number> = {};
-  modeCounts.forEach((m) => { modeMap[m.mode.toLowerCase()] = m.count; });
+  modeCountsRaw.forEach((m) => {
+    modeMap[m.mode.toLowerCase()] = m._count.mode;
+  });
 
-  // ── HELPERS ───────────────────────────────────────────────
+  // ── HELPERS ─────────────────────────────────────────────
   function normalizeStatus(s: string): string {
     const map: Record<string, string> = {
-      open: "Open", upcoming: "Open", full: "Full",
-      closed: "Closed", live: "Live",
+      open: "Open",
+      upcoming: "Open",
+      full: "Full",
+      closed: "Closed",
+      live: "Live",
     };
     return map[s?.toLowerCase()] ?? s;
   }
@@ -98,10 +81,16 @@ export async function GET() {
   function normalizeTournament(t: any) {
     return {
       ...t,
-      status:  normalizeStatus(t.status),
-      mode:    t.mode ? t.mode.charAt(0).toUpperCase() + t.mode.slice(1) : "—",
-      fee:     t.fee  ? `₹${t.fee}` : "Free",
-      prize:   t.prize ? `₹${Number(t.prize).toLocaleString("en-IN")}` : "TBA",
+      fee: t.entry_fee ? `₹${t.entry_fee}` : "Free",
+      prize: t.prize_pool
+        ? `₹${Number(t.prize_pool).toLocaleString("en-IN")}`
+        : "TBA",
+      slots: t.total_slots,
+      filled: t.filled_slots,
+      status: normalizeStatus(t.status),
+      mode: t.mode
+        ? t.mode.charAt(0).toUpperCase() + t.mode.slice(1)
+        : "—",
       platform: t.game === "BGMI" ? "Mobile" : "PC",
     };
   }
@@ -111,13 +100,13 @@ export async function GET() {
       bgmi: bgmiMatch ? normalizeTournament(bgmiMatch) : null,
       pubg: pubgMatch ? normalizeTournament(pubgMatch) : null,
     },
-    upcoming:   upcomingRaw.map(normalizeTournament),
+    upcoming: upcomingRaw.map(normalizeTournament),
     mapMatches: mapMatches.map(normalizeTournament),
     modes: {
-      solo:  modeMap["solo"]  ?? 0,
-      duo:   modeMap["duo"]   ?? 0,
+      solo: modeMap["solo"] ?? 0,
+      duo: modeMap["duo"] ?? 0,
       squad: modeMap["squad"] ?? 0,
-      tdm:   modeMap["tdm"]   ?? 0,
+      tdm: modeMap["tdm"] ?? 0,
     },
   });
 }

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/requireAuth";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import fs from "fs";
 import path from "path";
 
+// ✅ CREATE PAYMENT
 export async function POST(req: NextRequest) {
   const { user, error } = await requireAuth(req);
   if (error) return error;
@@ -11,10 +12,10 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
 
-    const tournament_id = formData.get("tournament_id");
-    const amount = formData.get("amount");
-    const method = formData.get("method");
-    const transaction_id = formData.get("transaction_id");
+    const tournament_id = Number(formData.get("tournament_id"));
+    const amount = Number(formData.get("amount"));
+    const method = String(formData.get("method"));
+    const transaction_id = String(formData.get("transaction_id"));
     const file = formData.get("screenshot") as File;
 
     if (!file) {
@@ -41,23 +42,22 @@ export async function POST(req: NextRequest) {
 
     const fileUrl = `/uploads/payments/${fileName}`;
 
-    // ✅ Insert DB
-    const result = db.prepare(`
-      INSERT INTO payments
-      (user_id, tournament_id, amount, method, transaction_id, screenshot_url, status)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending')
-    `).run(
-      user.id,
-      tournament_id,
-      amount,
-      method,
-      transaction_id,
-      fileUrl
-    );
+    // ✅ Insert DB (Prisma)
+    const payment = await prisma.payment.create({
+      data: {
+        user_id: user.id,
+        tournament_id,
+        amount,
+        method,
+        transaction_id,
+        screenshot_url: fileUrl,
+        status: "pending",
+      },
+    });
 
     return NextResponse.json({
       success: true,
-      payment_id: result.lastInsertRowid,
+      payment_id: payment.id,
       screenshot_url: fileUrl,
     });
 
@@ -71,14 +71,19 @@ export async function POST(req: NextRequest) {
 }
 
 
+// ✅ GET PAYMENTS
 export async function GET(req: NextRequest) {
   const { user, error } = await requireAuth(req);
   if (error) return error;
 
-  const data = db.prepare(`
-    SELECT * FROM payments WHERE user_id = ?
-    ORDER BY created_at DESC
-  `).all(user.id);
+  const data = await prisma.payment.findMany({
+    where: {
+      user_id: user.id,
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+  });
 
   return NextResponse.json({ success: true, data });
 }

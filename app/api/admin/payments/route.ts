@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   const { error } = await requireAdmin(req);
@@ -10,82 +10,98 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "All";
 
-  const conditions: string[] = [];
-  const params: any[] = [];
+  // ── STATUS MAP ───────────────────────
+  const statusMap: Record<string, string> = {
+    Pending: "pending",
+    Approved: "verified",
+    Rejected: "rejected",
+  };
 
-  if (search) {
-    conditions.push(`(u.name LIKE ? OR u.email LIKE ? OR p.transaction_id LIKE ? OR t.title LIKE ?)`);
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
-  }
+  const dbStatus =
+    status !== "All" ? statusMap[status] ?? status.toLowerCase() : undefined;
 
-  if (status !== "All") {
-    // Map frontend label → DB value
-    const statusMap: Record<string, string> = {
-      Pending: "pending",
-      Approved: "verified",
-      Rejected: "rejected",
-    };
-    conditions.push(`p.status = ?`);
-    params.push(statusMap[status] ?? status.toLowerCase());
-  }
+  // ── WHERE CONDITION ─────────────────
+  const where: any = {
+    ...(dbStatus && { status: dbStatus }),
 
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    ...(search && {
+      OR: [
+        { transaction_id: { contains: search, mode: "insensitive" } },
+        {
+          user: {
+            OR: [
+              { name: { contains: search, mode: "insensitive" } },
+              { email: { contains: search, mode: "insensitive" } },
+            ],
+          },
+        },
+        {
+          tournament: {
+            title: { contains: search, mode: "insensitive" },
+          },
+        },
+      ],
+    }),
+  };
 
-  const payments = db
-    .prepare(
-      `
-      SELECT
-        p.id,
-        p.amount,
-        p.method,
-        p.transaction_id  AS txnId,
-        p.screenshot_url  AS screenshotUrl,
-        p.status          AS rawStatus,
-        p.created_at      AS submittedAt,
-        u.id              AS userId,
-        u.name            AS userName,
-        u.email,
-        t.id              AS tournamentId,
-        t.title           AS tournament,
-        t.entry_fee       AS fee
-      FROM payments p
-      JOIN users       u ON u.id = p.user_id
-      JOIN tournaments t ON t.id = p.tournament_id
-      ${where}
-      ORDER BY
-        CASE p.status WHEN 'pending' THEN 0 WHEN 'verified' THEN 1 ELSE 2 END,
-        p.created_at DESC
-      `
-    )
-    .all(...params) as any[];
+  // ── FETCH PAYMENTS ──────────────────
+  const payments = await prisma.payment.findMany({
+    where,
+    include: {
+      user: true,
+      tournament: true,
+    },
+    orderBy: [
+      {
+        // custom order simulation
+        status: "asc", // pending < verified < rejected (works because of string order)
+      },
+      {
+        created_at: "desc",
+      },
+    ],
+  });
 
-  // Normalize status for frontend
+  // ── FORMAT DATA ─────────────────────
   const statusLabel: Record<string, string> = {
-    pending:  "Pending",
+    pending: "Pending",
     verified: "Approved",
     rejected: "Rejected",
   };
 
   const normalized = payments.map((p) => ({
-    ...p,
-    status: statusLabel[p.rawStatus] ?? "Pending",
-    fee: p.fee ? `₹${p.fee}` : "Free",
-    txnId: p.txnId || "—",
+    id: p.id,
+    amount: p.amount,
+    method: p.method,
+    txnId: p.transaction_id || "—",
+    screenshotUrl: p.screenshot_url,
+    rawStatus: p.status,
+    submittedAt: p.created_at,
+    userId: p.user?.id,
+    userName: p.user?.name,
+    email: p.user?.email,
+    tournamentId: p.tournament?.id,
+    tournament: p.tournament?.title,
+    fee: p.tournament?.entry_fee
+      ? `₹${p.tournament.entry_fee}`
+      : "Free",
+    status: statusLabel[p.status] ?? "Pending",
   }));
 
-  // Summary counts — always unfiltered
-  const summary = db
-    .prepare(
-      `
-      SELECT
-        COUNT(*)                                            AS total,
-        SUM(CASE WHEN status = 'pending'  THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN status = 'verified' THEN 1 ELSE 0 END) AS approved,
-        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected
-      FROM payments
-      `
-    )
-    .get() as any;
+  // ── SUMMARY ─────────────────────────
+  const [total, pending, approved, rejected] = await Promise.all([
+    prisma.payment.count(),
+    prisma.payment.count({ where: { status: "pending" } }),
+    prisma.payment.count({ where: { status: "verified" } }),
+    prisma.payment.count({ where: { status: "rejected" } }),
+  ]);
+
+  const summary = {
+    total,
+    pending,
+    approved,
+    rejected,
+  };
 
   return NextResponse.json({ payments: normalized, summary });
 }

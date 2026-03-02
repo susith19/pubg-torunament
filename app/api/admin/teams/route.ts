@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
 
 export async function GET(req: NextRequest) {
-  const { user, error } = await requireAdmin(req);
+  const { error } = await requireAdmin(req);
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
@@ -12,149 +12,128 @@ export async function GET(req: NextRequest) {
   const mode = searchParams.get("mode") || "All";
   const status = searchParams.get("status") || "All";
 
-  // Build dynamic SQL filters
-  const conditions: string[] = [];
-  const params: any[] = [];
+  // ── STATUS MAP ───────────────────────
+  const statusMap: Record<string, string> = {
+    approved: "verified",
+    pending: "pending",
+    rejected: "rejected",
+  };
 
-  if (search) {
-    conditions.push(`(
-      r.team_name LIKE ?
-      OR r.captain_name LIKE ?
-      OR t.title LIKE ?
-      OR pay.transaction_id LIKE ?
-    )`);
-    const like = `%${search}%`;
-    params.push(like, like, like, like);
-  }
+  const dbStatus =
+    status !== "All" ? statusMap[status.toLowerCase()] ?? status.toLowerCase() : undefined;
 
-  if (tournament !== "All") {
-    conditions.push(`t.title = ?`);
-    params.push(tournament);
-  }
+  // ── WHERE ───────────────────────────
+  const where: any = {
+    ...(search && {
+      OR: [
+        { team_name: { contains: search, mode: "insensitive" } },
+        { captain_name: { contains: search, mode: "insensitive" } },
+        {
+          tournament: {
+            title: { contains: search, mode: "insensitive" },
+          },
+        },
+        {
+          payment: {
+            transaction_id: { contains: search, mode: "insensitive" },
+          },
+        },
+      ],
+    }),
 
-  if (mode !== "All") {
-    conditions.push(`t.mode = ?`);
-    params.push(mode);
-  }
+    ...(tournament !== "All" && {
+      tournament: { title: tournament },
+    }),
 
-  if (status !== "All") {
-    const dbStatus = status.toLowerCase(); // pending / verified / rejected
-    // Map frontend labels → DB values
-    const statusMap: Record<string, string> = {
-      approved: "verified",
-      pending: "pending",
-      rejected: "rejected",
-    };
-    conditions.push(`pay.status = ?`);
-    params.push(statusMap[dbStatus] ?? dbStatus);
-  }
+    ...(mode !== "All" && {
+      tournament: { mode },
+    }),
 
-  const where =
-    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    ...(dbStatus && {
+      payment: { status: dbStatus },
+    }),
+  };
 
-  const rows = db
-    .prepare(
-      `
-      SELECT
-        r.id,
-        r.team_name        AS teamName,
-        r.team_tag         AS teamTag,
-        r.captain_name     AS captainName,
-        r.captain_player_id AS captainPlayerId,
-        r.status           AS slotStatus,
-        r.created_at       AS registeredAt,
+  // ── FETCH ───────────────────────────
+  const registrations = await prisma.registration.findMany({
+    where,
+    include: {
+      tournament: true,
+      user: true,
+      payment: true,
+      players: true,
+    },
+    orderBy: {
+      created_at: "desc",
+    },
+  });
 
-        t.id               AS tournamentId,
-        t.title            AS tournament,
-        t.game             AS platform,
-        t.mode,
-        t.map,
-        t.entry_fee        AS fee,
+  // ── FORMAT ──────────────────────────
+  const payStatusMap: Record<string, string> = {
+    verified: "Approved",
+    pending: "Pending",
+    rejected: "Rejected",
+  };
 
-        u.email,
+  const teams = registrations.map((r) => {
+    const captain =
+      r.players.find((p) => p.is_captain) || {
+        name: r.captain_name,
+        playerId: r.captain_player_id,
+      };
 
-        pay.id             AS paymentId,
-        pay.transaction_id AS txnId,
-        pay.status         AS paymentStatus,
-        pay.method,
-        pay.screenshot_url AS screenshotUrl
-
-      FROM registrations r
-      JOIN tournaments t   ON t.id = r.tournament_id
-      JOIN users u         ON u.id = r.user_id
-      LEFT JOIN payments pay ON pay.id = r.payment_id
-
-      ${where}
-      ORDER BY r.created_at DESC
-    `
-    )
-    .all(...params) as any[];
-
-  // Fetch players for each registration
-  const teams = rows.map((row) => {
-    const players = db
-      .prepare(
-        `SELECT player_name AS name, player_id AS playerId, is_captain AS isCaptain
-         FROM players
-         WHERE registration_id = ?`
-      )
-      .all(row.id) as any[];
-
-    const captain = players.find((p) => p.isCaptain) ?? {
-      name: row.captainName,
-      playerId: row.captainPlayerId,
-    };
-
-    const members = players.filter((p) => !p.isCaptain);
-
-    // Normalize payment status for frontend
-    const payStatusMap: Record<string, string> = {
-      verified: "Approved",
-      pending: "Pending",
-      rejected: "Rejected",
-    };
+    const members = r.players.filter((p) => !p.is_captain);
 
     return {
-      id: row.id,
-      teamName: row.teamName,
-      teamTag: row.teamTag,
-      mode: row.mode,
-      platform: row.platform,
-      tournament: row.tournament,
-      tournamentId: row.tournamentId,
-      map: row.map,
-      fee: row.fee,
-      email: row.email,
-      txnId: row.txnId ?? "—",
-      screenshotUrl: row.screenshotUrl,
-      registeredAt: row.registeredAt,
-      paymentStatus: payStatusMap[row.paymentStatus] ?? "Pending",
-      slotStatus: row.slotStatus === "approved" ? "Confirmed" : row.slotStatus === "rejected" ? "Rejected" : "Pending",
+      id: r.id,
+      teamName: r.team_name,
+      teamTag: r.team_tag,
+      mode: r.tournament?.mode,
+      platform: r.tournament?.game,
+      tournament: r.tournament?.title,
+      tournamentId: r.tournament?.id,
+      map: r.tournament?.map,
+      fee: r.tournament?.entry_fee,
+      email: r.user?.email,
+      txnId: r.payment?.transaction_id ?? "—",
+      screenshotUrl: r.payment?.screenshot_url,
+      registeredAt: r.created_at,
+      paymentStatus: payStatusMap[r.payment?.status || "pending"],
+      slotStatus:
+        r.status === "approved"
+          ? "Confirmed"
+          : r.status === "rejected"
+          ? "Rejected"
+          : "Pending",
       captain,
       players: members,
     };
   });
 
-  // Summary counts (unfiltered)
-  const summary = db
-    .prepare(
-      `
-      SELECT
-        COUNT(*) AS total,
-        SUM(CASE WHEN pay.status = 'verified'  THEN 1 ELSE 0 END) AS approved,
-        SUM(CASE WHEN pay.status = 'pending'   THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN pay.status = 'rejected'  THEN 1 ELSE 0 END) AS rejected
-      FROM registrations r
-      LEFT JOIN payments pay ON pay.id = r.payment_id
-    `
-    )
-    .get() as any;
+  // ── SUMMARY ─────────────────────────
+  const [total, approved, pending, rejected] = await Promise.all([
+    prisma.registration.count(),
+    prisma.registration.count({
+      where: { payment: { status: "verified" } },
+    }),
+    prisma.registration.count({
+      where: { payment: { status: "pending" } },
+    }),
+    prisma.registration.count({
+      where: { payment: { status: "rejected" } },
+    }),
+  ]);
 
-  // Distinct tournament list for filter dropdown
-  const tournaments = db
-    .prepare(`SELECT DISTINCT title FROM tournaments ORDER BY title`)
-    .all()
-    .map((t: any) => t.title);
+  const summary = { total, approved, pending, rejected };
+
+  // ── TOURNAMENT LIST ─────────────────
+  const tournamentsRaw = await prisma.tournament.findMany({
+    select: { title: true },
+    distinct: ["title"],
+    orderBy: { title: "asc" },
+  });
+
+  const tournaments = tournamentsRaw.map((t) => t.title);
 
   return NextResponse.json({ teams, summary, tournaments });
 }

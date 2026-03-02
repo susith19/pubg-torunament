@@ -1,23 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
-import {adminAuth} from "@/lib/firebaseAdmin";
+import { adminAuth } from "@/lib/firebaseAdmin";
 
 export async function GET(req: NextRequest) {
-  const token = req.headers.get("authorization")?.split("Bearer ")[1];
-
-  if (!token) {
-    return NextResponse.json({ error: "No token" }, { status: 401 });
-  }
-
   try {
+    const authHeader = req.headers.get("authorization");
+
+    // ✅ Validate header format
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json(
+        { error: "No token provided" },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.split("Bearer ")[1];
+
+    // 🔐 Verify Firebase token
     const decoded = await adminAuth.verifyIdToken(token);
 
     return NextResponse.json({
-      uid: decoded.uid,
-      email: decoded.email,
-      name: decoded.name || "",
-      role: decoded.role || "user",
+      success: true,
+      user: {
+        uid: decoded.uid,
+        email: decoded.email,
+        name: decoded.name || "",
+        role: decoded.role || "user",
+      },
     });
+
   } catch (err) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    console.error("Auth error:", err);
+
+    return NextResponse.json(
+      { error: "Invalid or expired token" },
+      { status: 401 }
+    );
   }
 }

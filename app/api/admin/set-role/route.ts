@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { adminAuth } from "@/lib/firebaseAdmin";
 
 export async function PUT(req: NextRequest) {
@@ -26,9 +26,16 @@ export async function PUT(req: NextRequest) {
     }
 
     // 🔍 Check user exists
-    const existing = db
-      .prepare("SELECT id, uid FROM users WHERE uid = ? AND is_deleted = 0")
-      .get(uid);
+    const existing = await prisma.user.findFirst({
+      where: {
+        uid,
+        is_deleted: 0,
+      },
+      select: {
+        id: true,
+        uid: true,
+      },
+    });
 
     if (!existing) {
       return NextResponse.json(
@@ -46,11 +53,13 @@ export async function PUT(req: NextRequest) {
     }
 
     // ✅ Update DB
-    db.prepare(`
-      UPDATE users 
-      SET role = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE uid = ?
-    `).run(role, uid);
+    await prisma.user.update({
+      where: { uid },
+      data: {
+        role,
+        updated_at: new Date(),
+      },
+    });
 
     // ✅ Sync with Firebase (VERY IMPORTANT)
     await adminAuth.setCustomUserClaims(uid, { role });

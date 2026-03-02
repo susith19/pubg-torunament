@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 import { adminAuth } from "@/lib/firebaseAdmin";
 
 // ✅ Generate referral code
@@ -28,9 +28,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 🔍 Check existing user
-    const existing: any = db
-      .prepare("SELECT * FROM users WHERE uid = ?")
-      .get(uid);
+    const existing = await prisma.user.findUnique({
+      where: { uid },
+    });
 
     if (existing) {
       return NextResponse.json(existing);
@@ -38,86 +38,100 @@ export async function POST(req: NextRequest) {
 
     // 🎁 Generate unique referral code
     let newCode = generateReferralCode(email);
+
     while (
-      db.prepare("SELECT id FROM users WHERE referral_code = ?").get(newCode)
+      await prisma.user.findFirst({
+        where: { referral_code: newCode },
+      })
     ) {
       newCode = generateReferralCode(email);
     }
 
     // 🎯 Validate referral
-    let referrer: any = null;
+    let referrer = null;
 
     if (referral_code) {
-      referrer = db
-        .prepare("SELECT * FROM users WHERE referral_code = ?")
-        .get(referral_code);
+      const found = await prisma.user.findFirst({
+        where: { referral_code },
+      });
 
-      // ❌ Prevent self-referral (edge case safety)
-      if (referrer && referrer.uid === uid) {
-        referrer = null;
+      if (found && found.uid !== uid) {
+        referrer = found;
       }
     }
 
-    // ✅ Insert new user
-    const result = db
-      .prepare(`
-        INSERT INTO users 
-        (uid, email, name, role, referral_code, referred_by)
-        VALUES (?, ?, ?, 'user', ?, ?)
-      `)
-      .run(uid, email, name, newCode, referrer?.referral_code || null);
+    const POINTS = 10;
 
-    const newUserId = result.lastInsertRowid as number;
+    // 🔥 TRANSACTION (CRITICAL)
+    const result = await prisma.$transaction(async (tx : any) => {
+      // ✅ Create user
+      const newUser = await tx.user.create({
+        data: {
+          uid,
+          email,
+          name,
+          role: "user",
+          referral_code: newCode,
+          referred_by: referrer?.referral_code || null,
+        },
+      });
 
-    // 🎁 Referral logic (UPDATED)
-    if (referrer) {
-      const POINTS = 10;
+      // 🎁 Referral logic
+      if (referrer) {
+        // increment referral count
+        await tx.user.update({
+          where: { id: referrer.id },
+          data: {
+            referral_count: { increment: 1 },
+            total_points: { increment: POINTS },
+          },
+        });
 
-      // ✅ Increase referral count
-      db.prepare(`
-        UPDATE users 
-        SET referral_count = referral_count + 1
-        WHERE id = ?
-      `).run(referrer.id);
+        // give points to new user
+        await tx.user.update({
+          where: { id: newUser.id },
+          data: {
+            total_points: { increment: POINTS },
+          },
+        });
 
-      // ✅ Add points to referrer
-      db.prepare(`
-        UPDATE users 
-        SET total_points = total_points + ?
-        WHERE id = ?
-      `).run(POINTS, referrer.id);
+        // save referral relation
+        await tx.referral.create({
+          data: {
+            referrer_id: referrer.id,
+            referred_user_id: newUser.id,
+            points_given: POINTS,
+          },
+        });
 
-      // ✅ Add points to new user (optional reward)
-      db.prepare(`
-        UPDATE users 
-        SET total_points = total_points + ?
-        WHERE id = ?
-      `).run(POINTS, newUserId);
+        // points log (referrer)
+        await tx.point.create({
+          data: {
+            user_id: referrer.id,
+            points: POINTS,
+            type: "referral",
+            reference_id: String(newUser.id),
+          },
+        });
 
-      // ✅ Save referral relation
-      db.prepare(`
-        INSERT INTO referrals (referrer_id, referred_user_id, points_given)
-        VALUES (?, ?, ?)
-      `).run(referrer.id, newUserId, POINTS);
+        // points log (new user)
+        await tx.point.create({
+          data: {
+            user_id: newUser.id,
+            points: POINTS,
+            type: "referral",
+            reference_id: String(referrer.id),
+          },
+        });
+      }
 
-      // ✅ Points log (referrer)
-      db.prepare(`
-        INSERT INTO points (user_id, points, type, reference_id)
-        VALUES (?, ?, 'referral', ?)
-      `).run(referrer.id, POINTS, newUserId);
+      return newUser;
+    });
 
-      // ✅ Points log (new user)
-      db.prepare(`
-        INSERT INTO points (user_id, points, type, reference_id)
-        VALUES (?, ?, 'referral', ?)
-      `).run(newUserId, POINTS, referrer.id);
-    }
-
-    // ✅ Final response
     return NextResponse.json({
       success: true,
       user: {
-        id: newUserId,
+        id: result.id,
         uid,
         email,
         name,
@@ -127,6 +141,7 @@ export async function POST(req: NextRequest) {
 
   } catch (err) {
     console.error(err);
+
     return NextResponse.json(
       { error: "Auth failed" },
       { status: 401 }

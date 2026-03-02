@@ -1,0 +1,154 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ... rest of your models ...
+model User {
+  id             Int      @id @default(autoincrement())
+  uid            String?  @unique
+  email          String?  @unique
+  name           String?
+  phone          String?
+  role           String   @default("user")
+  referral_code  String?  @unique
+  referral_count Int      @default(0)
+  referred_by    String?
+  total_points   Int      @default(0)
+  is_deleted     Int      @default(0)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  // 🔥 RELATIONS
+  registrations  Registration[]
+  payments       Payment[]
+  points         Point[]
+  redeems        Redeem[]
+
+  @@index([email])
+}
+
+model Tournament {
+  id            Int      @id @default(autoincrement())
+  title         String?
+  game          String?
+  mode          String?
+  map           String?
+  entry_fee     Int?
+  prize_pool    Int?
+  total_slots   Int?
+  filled_slots  Int      @default(0)
+  status        String   @default("upcoming")
+  room_id       String?
+  room_pass     String?
+  start_date    DateTime?
+  created_at    DateTime @default(now())
+
+  // 🔥 RELATIONS
+  registrations Registration[]
+  payments      Payment[]
+
+  @@index([status])
+}
+
+model Registration {
+  id                Int      @id @default(autoincrement())
+  user_id           Int
+  tournament_id     Int
+  payment_id        Int?
+
+  team_name         String?
+  team_tag          String?
+  captain_name      String?
+  captain_player_id String?
+  status            String   @default("pending")
+  created_at        DateTime @default(now())
+
+  // 🔥 RELATIONS
+  user       User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  tournament Tournament @relation(fields: [tournament_id], references: [id], onDelete: Cascade)
+  payment    Payment?   @relation(fields: [payment_id], references: [id])
+  players    Player[]
+
+  @@index([user_id])
+  @@index([tournament_id])
+
+  // 🚫 Prevent duplicate registration per user per tournament
+  @@unique([user_id, tournament_id])
+}
+
+model Player {
+  id              Int     @id @default(autoincrement())
+  registration_id Int
+  player_name     String?
+  player_id       String?
+  is_captain      Boolean @default(false)
+
+  // 🔥 RELATION
+  registration Registration @relation(fields: [registration_id], references: [id], onDelete: Cascade)
+
+  @@index([registration_id])
+}
+
+model Payment {
+  id             Int      @id @default(autoincrement())
+  user_id        Int
+  tournament_id  Int
+  amount         Int?
+  method         String?
+  transaction_id String?
+  screenshot_url String?
+  status         String   @default("pending")
+  created_at     DateTime @default(now())
+
+  // 🔥 RELATIONS
+  user         User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  tournament   Tournament   @relation(fields: [tournament_id], references: [id], onDelete: Cascade)
+  registrations Registration[]
+
+  @@index([user_id])
+  @@index([tournament_id])
+  @@index([status])
+}
+
+model Point {
+  id           Int      @id @default(autoincrement())
+  user_id      Int
+  points       Int?
+  type         String?
+  reference_id String?
+  created_at   DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+}
+
+model Redeem {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  points_used Int?
+  amount      Int?
+  upi_id      String?
+  status      String   @default("pending")
+  created_at  DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([status])
+}
+
+model Referral {
+  id               Int      @id @default(autoincrement())
+  referrer_id      Int
+  referred_user_id Int
+  points_given     Int?
+  created_at       DateTime @default(now())
+
+  @@index([referrer_id])
+  @@index([referred_user_id])
+}
