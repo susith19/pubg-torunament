@@ -69,8 +69,6 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const params = useSearchParams();
-  const message = params.get("message");
 
   const login = async () => {
     if (!email || !password) return;
@@ -298,7 +296,7 @@ export default function Login() {
 
           {/* Sign Up link */}
           <p className="text-center mt-5 text-sm text-gray-400">
-            Don't have an account yet?{" "}
+            Dont have an account yet?{" "}
             <a
               href="/signup"
               className="text-gray-900 hover:text-[#F2AA00] transition-colors underline underline-offset-2 decoration-gray-300 "

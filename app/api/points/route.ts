@@ -92,16 +92,16 @@ export async function GET(req: NextRequest) {
       redeemed: redeemedPts,
     },
     referralCode: me?.referral_code ?? null,
-    winningHistory: winningHistory.map((w) => ({
+    winningHistory: winningHistory.map((w: any) => ({
       ...w,
       badge:    badge(w.position),
       date:     fmtDate(w.date),
     })),
-    referralHistory: referralHistory.map((r) => ({
+    referralHistory: referralHistory.map((r: any) => ({
       ...r,
       date: fmtDate(r.date),
     })),
-    redeemHistory: redeemHistory.map((r) => ({
+    redeemHistory: redeemHistory.map((r: any) => ({
       ...r,
       date: fmtDate(r.date),
     })),

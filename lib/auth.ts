@@ -8,6 +8,7 @@ export interface AuthUser {
   email: string;
   role: string;
   referral_code: string;
+  referral_count: number;
 }
 
 export async function getAuthUser(req: NextRequest): Promise<AuthUser | null> {

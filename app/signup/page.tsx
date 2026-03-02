@@ -81,6 +81,25 @@ const XSmallIcon = () => (
   </svg>
 );
 
+const GiftIcon = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <polyline points="20 12 20 22 4 22 4 12" />
+    <rect x="2" y="7" width="20" height="5" />
+    <line x1="12" y1="22" x2="12" y2="7" />
+    <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
+    <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+  </svg>
+);
+
 // ---------------------------------------------------------------------------
 // Password strength helpers
 // ---------------------------------------------------------------------------
@@ -104,6 +123,10 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Referral code state
+  const [referralCode, setReferralCode] = useState("");
+  const [showReferral, setShowReferral] = useState(false);
+
   const passwordFocused = password.length > 0;
   const passwordsMatch =
     password === confirmPassword && confirmPassword.length > 0;
@@ -125,7 +148,7 @@ export default function Signup() {
       // ✅ 3. Force refresh token (IMPORTANT)
       const token = await res.user.getIdToken(true);
 
-      // ✅ 4. Send to backend (with referral support)
+      // ✅ 4. Send to backend (with optional referral code)
       const apiRes = await fetch("/api/auth/firebase", {
         method: "POST",
         headers: {
@@ -133,7 +156,7 @@ export default function Signup() {
         },
         body: JSON.stringify({
           token,
-          referral_code, // 👈 ADD THIS (optional)
+          ...(referralCode.trim() && { referral_code: referralCode.trim() }), // 👈 Only sent if provided
         }),
       });
 
@@ -170,7 +193,10 @@ export default function Signup() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({
+          token,
+          ...(referralCode.trim() && { referral_code: referralCode.trim() }), // 👈 Also passed for Google signup
+        }),
       });
 
       localStorage.setItem("token", token);
@@ -342,6 +368,58 @@ export default function Signup() {
               <p className="mt-1.5 text-xs text-red-500">
                 Passwords do not match.
               </p>
+            )}
+          </div>
+
+          {/* Referral Code (Optional) */}
+          <div className="mb-5">
+            <button
+              type="button"
+              onClick={() => setShowReferral(!showReferral)}
+              className="flex items-center gap-2 text-sm text-gray-400 hover:text-[#F2AA00] transition-colors duration-150 cursor-pointer group"
+            >
+              <GiftIcon />
+              <span>
+                {showReferral ? "Hide referral code" : "Have a referral code?"}
+              </span>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 14 14"
+                fill="none"
+                className={`transition-transform duration-200 ${showReferral ? "rotate-180" : ""}`}
+              >
+                <path
+                  d="M3 5l4 4 4-4"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+
+            {showReferral && (
+              <div className="mt-2 overflow-hidden">
+                <input
+                  type="text"
+                  placeholder="Enter referral code (optional)"
+                  value={referralCode}
+                  onChange={(e) =>
+                    setReferralCode(e.target.value.toUpperCase())
+                  }
+                  onKeyDown={handleKeyDown}
+                  autoComplete="off"
+                  maxLength={20}
+                  className="w-full px-4 py-3 rounded-xl bg-amber-50 border border-[#F2AA00]/40 text-gray-900 text-sm placeholder-gray-400 outline-none focus:border-[#F2AA00] focus:ring-2 focus:ring-[#F2AA00]/10 transition-all duration-150 tracking-widest font-mono uppercase"
+                />
+                {referralCode && (
+                  <p className="mt-1.5 text-xs text-[#c48e00] flex items-center gap-1">
+                    <CheckIcon />
+                    Referral code applied
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
