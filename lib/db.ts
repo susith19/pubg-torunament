@@ -1,6 +1,9 @@
 import Database from "better-sqlite3";
+import path from "path/win32";
 
-const db = new Database("db.sqlite", { verbose: console.log });
+const db = new Database(path.join(process.cwd(), "db.sqlite"), {
+  verbose: console.log,
+});
 
 /* =========================
    USERS
@@ -14,6 +17,7 @@ db.prepare(`
     phone TEXT,
     role TEXT DEFAULT 'user',
     referral_code TEXT UNIQUE,
+    referral_count INTEGER DEFAULT 0,
     referred_by TEXT,
     total_points INTEGER DEFAULT 0,
     is_deleted INTEGER DEFAULT 0,
@@ -37,6 +41,8 @@ db.prepare(`
     total_slots INTEGER,
     filled_slots INTEGER DEFAULT 0,
     status TEXT DEFAULT 'upcoming', -- open / full / closed
+    room_id TEXT DEFAULT NULL,
+    room_pass TEXT DEFAULT NULL,
     start_date DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
@@ -140,5 +146,13 @@ db.prepare(`CREATE INDEX IF NOT EXISTS idx_users_uid ON users(uid)`).run();
 db.prepare(`CREATE INDEX IF NOT EXISTS idx_tournaments_status ON tournaments(status)`).run();
 db.prepare(`CREATE INDEX IF NOT EXISTS idx_registrations_user ON registrations(user_id)`).run();
 db.prepare(`CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id)`).run();
+db.prepare(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`).run();
+
+
+const tables = db.prepare(`
+  SELECT name FROM sqlite_master WHERE type='table'
+`).all();
+
+console.log(tables);
 
 export { db };  

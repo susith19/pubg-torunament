@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faMagnifyingGlass,
@@ -9,122 +9,13 @@ import {
   faXmark,
   faUsers,
   faUser,
-  faTrophy,
-  faHashtag,
-  faEnvelope,
-  faMobileScreen,
-  faDesktop,
-  faCircleDot,
-  faUsersSlash,
-  faLock,
   faClock,
   faCircleCheck,
   faShield,
+  faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
 
-// ── DUMMY DATA ─────────────────────────────────────────────
-const teamsData = [
-  {
-    id: 1,
-    teamName: "Alpha Squad",
-    mode: "Squad",
-    platform: "BGMI",
-    tournament: "Erangel Squad Battle",
-    tournamentId: "t-001",
-    map: "Erangel",
-    fee: 50,
-    upi: "alpha@upi",
-    txnId: "TXN202601A",
-    email: "alpha@email.com",
-    registeredAt: "10 min ago",
-    paymentStatus: "Approved",
-    slotStatus: "Confirmed",
-    captain: { name: "Susith", playerId: "BGM001" },
-    players: [
-      { name: "Arjun", playerId: "BGM002" },
-      { name: "Karthik", playerId: "BGM003" },
-      { name: "Meena", playerId: "BGM004" },
-    ],
-  },
-  {
-    id: 2,
-    teamName: "Desert Wolves",
-    mode: "Duo",
-    platform: "PUBG",
-    tournament: "Miramar Duo Clash",
-    tournamentId: "t-002",
-    map: "Miramar",
-    fee: 30,
-    upi: "wolves@upi",
-    txnId: "TXN202602B",
-    email: "wolves@email.com",
-    registeredAt: "35 min ago",
-    paymentStatus: "Pending",
-    slotStatus: "Pending",
-    captain: { name: "Rajan", playerId: "PUB001" },
-    players: [{ name: "Priya", playerId: "PUB002" }],
-  },
-  {
-    id: 3,
-    teamName: "Solo Ghost",
-    mode: "Solo",
-    platform: "BGMI",
-    tournament: "Sanhok Solo Rush",
-    tournamentId: "t-003",
-    map: "Sanhok",
-    fee: 20,
-    upi: "ghost@paytm",
-    txnId: "TXN202603C",
-    email: "ghost@email.com",
-    registeredAt: "1h ago",
-    paymentStatus: "Approved",
-    slotStatus: "Confirmed",
-    captain: { name: "Vikram", playerId: "BGM010" },
-    players: [],
-  },
-  {
-    id: 4,
-    teamName: "Iron Fist",
-    mode: "Squad",
-    platform: "BGMI",
-    tournament: "Erangel Squad Battle",
-    tournamentId: "t-001",
-    map: "Erangel",
-    fee: 50,
-    upi: "iron@phonepe",
-    txnId: "TXN202604D",
-    email: "ironfist@email.com",
-    registeredAt: "2h ago",
-    paymentStatus: "Rejected",
-    slotStatus: "Rejected",
-    captain: { name: "Dhruv", playerId: "BGM020" },
-    players: [
-      { name: "Sneha", playerId: "BGM021" },
-      { name: "Rohan", playerId: "BGM022" },
-      { name: "Anil", playerId: "BGM023" },
-    ],
-  },
-  {
-    id: 5,
-    teamName: "Night Hunters",
-    mode: "Duo",
-    platform: "BGMI",
-    tournament: "Miramar Duo Clash",
-    tournamentId: "t-002",
-    map: "Miramar",
-    fee: 30,
-    upi: "hunters@upi",
-    txnId: "TXN202605E",
-    email: "hunters@email.com",
-    registeredAt: "3h ago",
-    paymentStatus: "Approved",
-    slotStatus: "Confirmed",
-    captain: { name: "Neha", playerId: "BGM030" },
-    players: [{ name: "Tejas", playerId: "BGM031" }],
-  },
-];
-
-// ── helpers ───────────────────────────────────────────────
+// ── helpers ──────────────────────────────────────────────
 const paymentStyle: Record<string, string> = {
   Approved: "bg-green-500/10 text-green-400 border-green-500/20",
   Pending: "bg-[#F2AA00]/10 text-[#F2AA00] border-[#F2AA00]/20",
@@ -138,17 +29,31 @@ const paymentIcon: Record<string, any> = {
 };
 
 const modeIcon: Record<string, any> = {
-  Squad: faUsers,
-  Duo: faUsers,
-  Solo: faUser,
+  squad: faUsers,
+  duo: faUsers,
+  solo: faUser,
 };
 
 const platformColor: Record<string, string> = {
   BGMI: "bg-green-500/10 text-green-400 border-green-500/20",
   PUBG: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  PUBG_PC: "bg-blue-500/10 text-blue-400 border-blue-500/20",
 };
 
-// ── DETAIL MODAL ──────────────────────────────────────────
+// relative time helper — handles SQLite "2026-02-26 12:08:32" format
+function relativeTime(iso: string) {
+  if (!iso) return "—";
+  // SQLite uses space separator; replace with T for cross-browser Date parsing
+  const diff = Date.now() - new Date(iso.replace(" ", "T") + "Z").getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+// ── DETAIL MODAL ─────────────────────────────────────────
 function TeamDetailModal({
   team,
   onClose,
@@ -156,10 +61,21 @@ function TeamDetailModal({
   team: any;
   onClose: () => void;
 }) {
+  // Normalize mode display (DB stores lowercase: "squad", "duo", "solo")
+  const displayMode = team.mode
+    ? team.mode.charAt(0).toUpperCase() + team.mode.slice(1).toLowerCase()
+    : "—";
+
   const allPlayers = [
-    { ...team.captain, role: "Captain", idx: 1 },
+    {
+      name: team.captain?.name ?? "—",
+      playerId: team.captain?.playerId ?? "—",
+      role: "Captain",
+      idx: 1,
+    },
     ...team.players.map((p: any, i: number) => ({
-      ...p,
+      name: p.name ?? "—",
+      playerId: p.playerId ?? "—",
       role: `Player ${i + 2}`,
       idx: i + 2,
     })),
@@ -167,30 +83,20 @@ function TeamDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
-        className="bg-[#0e0e0e] border border-gray-800 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className="bg-[#111] border border-gray-800 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* MODAL HEADER */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-800 sticky top-0 bg-[#0e0e0e] z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#F2AA00]/10 flex items-center justify-center">
-              <FontAwesomeIcon
-                icon={faShield}
-                className="text-[#F2AA00] text-xs"
-              />
-            </div>
-            <div>
-              <p className="text-sm tracking-wide text-white">
-                {team.teamName}
-              </p>
-              <p className="text-[10px] text-gray-600 mt-0.5">
-                {team.tournament}
-              </p>
-            </div>
+        {/* HEADER */}
+        <div className="flex items-start justify-between p-5 border-b border-gray-800">
+          <div>
+            <h2 className="text-white text-base text-lg tracking-widest">
+              {team.teamName}
+            </h2>
+            <p className="text-gray-500 text-md mt-0.5">{team.tournament}</p>
           </div>
           <button
             onClick={onClose}
@@ -200,136 +106,115 @@ function TeamDetailModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="p-5 space-y-5 ">
           {/* STATUS ROW */}
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex flex-wrap gap-2">
             <span
-              className={`text-[10px] px-2.5 py-1 rounded-md border flex items-center gap-1.5 ${paymentStyle[team.paymentStatus]}`}
+              className={`text-sm px-2.5 py-1 rounded-full border flex items-center gap-1.5 ${paymentStyle[team.paymentStatus]}`}
             >
               <FontAwesomeIcon
                 icon={paymentIcon[team.paymentStatus]}
-                className="text-[8px]"
+                className="w-3 h-3"
               />
               Payment {team.paymentStatus}
             </span>
             <span
-              className={`text-[10px] px-2.5 py-1 rounded-md border flex items-center gap-1.5 ${platformColor[team.platform]}`}
+              className={`text-xs px-2.5 py-1 rounded-full border ${platformColor[team.platform] ?? "bg-gray-800 text-gray-400 border-gray-700"}`}
             >
               {team.platform}
             </span>
-            <span className="text-[10px] px-2.5 py-1 rounded-md border border-[#F2AA00]/20 bg-[#F2AA00]/10 text-[#F2AA00]">
-              {team.mode}
+            <span className="text-xs px-2.5 py-1 rounded-full border bg-gray-800/40 text-gray-400 border-gray-700 flex items-center gap-1.5">
+              <FontAwesomeIcon
+                icon={modeIcon[team.mode?.toLowerCase()] ?? faUsers}
+                className="w-3 h-3"
+              />
+              {displayMode}
             </span>
           </div>
 
           {/* TOURNAMENT INFO */}
           <div>
-            <p className="text-[9px] text-gray-600 tracking-[0.2em] uppercase mb-2">
+            <p className="text-gray-500 text-lg uppercase tracking-widest mb-2">
               Tournament
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-md">
               {[
                 { label: "Name", val: team.tournament },
                 { label: "Map", val: team.map },
-                { label: "Mode", val: team.mode },
+                { label: "Mode", val: displayMode },
                 { label: "Fee", val: `₹${team.fee}` },
-                { label: "Date", val: team.registeredAt },
+                { label: "Date", val: relativeTime(team.registeredAt) },
               ].map((r, i) => (
                 <div
                   key={i}
-                  className="bg-black border border-gray-800 rounded-lg px-3 py-2.5"
+                  className="flex justify-between border-b border-gray-800 pb-1.5"
                 >
-                  <p className="text-[9px] text-gray-600 tracking-widest uppercase mb-0.5">
-                    {r.label}
-                  </p>
-                  <p className="text-xs text-white">{r.val}</p>
+                  <span className="text-gray-500">{r.label}</span>
+                  <span className="text-white">{r.val}</span>
                 </div>
               ))}
-              <div className="bg-black border border-gray-800 rounded-lg px-3 py-2.5">
-                <p className="text-[9px] text-gray-600 tracking-widest uppercase mb-0.5">
-                  Platform
-                </p>
-                <p className="text-xs text-white">{team.platform}</p>
-              </div>
+            </div>
+            <div className="flex justify-between mt-2 text-md border-b border-gray-800 pb-1.5">
+              <span className="text-gray-500">Platform</span>
+              <span
+                className={`px-1.5 py-0.5 rounded text-[14px] border ${platformColor[team.platform] ?? "bg-gray-800 text-gray-400 border-gray-700"}`}
+              >
+                {team.platform}
+              </span>
             </div>
           </div>
 
           {/* CONTACT */}
           <div>
-            <p className="text-[9px] text-gray-600 tracking-[0.2em] uppercase mb-2">
+            <p className="text-gray-500 text-md uppercase tracking-widest mb-2">
               Contact
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-black border border-gray-800 rounded-lg px-3 py-2.5">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <FontAwesomeIcon
-                    icon={faEnvelope}
-                    className="text-[#F2AA00] text-[9px]"
-                  />
-                  <p className="text-[9px] text-gray-600 tracking-widest uppercase">
-                    Email
-                  </p>
-                </div>
-                <p className="text-xs text-white">{team.email}</p>
+            <div className="space-y-1.5 text-md">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Email</span>
+                <span className="text-white">{team.email}</span>
               </div>
-              <div className="bg-black border border-gray-800 rounded-lg px-3 py-2.5">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <FontAwesomeIcon
-                    icon={faMobileScreen}
-                    className="text-[#F2AA00] text-[9px]"
-                  />
-                  <p className="text-[9px] text-gray-600 tracking-widest uppercase">
-                    UPI
-                  </p>
-                </div>
-                <p className="text-xs text-white font-mono">{team.upi}</p>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Txn ID</span>
+                <span className="text-white font-mono">{team.txnId}</span>
               </div>
-              <div className="bg-black border border-gray-800 rounded-lg px-3 py-2.5 col-span-2">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <FontAwesomeIcon
-                    icon={faHashtag}
-                    className="text-[#F2AA00] text-[9px]"
-                  />
-                  <p className="text-[9px] text-gray-600 tracking-widest uppercase">
-                    Txn ID
-                  </p>
+              {team.screenshotUrl && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Screenshot</span>
+                  <a
+                    href={team.screenshotUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[#F2AA00] underline"
+                  >
+                    View
+                  </a>
                 </div>
-                <p className="text-xs text-white font-mono">{team.txnId}</p>
-              </div>
+              )}
             </div>
           </div>
 
           {/* PLAYERS */}
           <div>
-            <p className="text-[9px] text-gray-600 tracking-[0.2em] uppercase mb-2">
+            <p className="text-gray-500 text-md uppercase tracking-widest mb-2">
               Players ({allPlayers.length})
             </p>
             <div className="space-y-2">
               {allPlayers.map((p, i) => (
                 <div
                   key={i}
-                  className={`flex items-center justify-between px-3 py-2.5 rounded-lg border ${
-                    p.role === "Captain"
-                      ? "border-[#F2AA00]/30 bg-[#F2AA00]/5"
-                      : "border-gray-800 bg-black"
-                  }`}
+                  className="flex items-center gap-3 bg-[#0b0b0b] rounded-lg px-3 py-2"
                 >
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] flex-shrink-0 ${
-                        p.role === "Captain"
-                          ? "bg-[#F2AA00] text-black"
-                          : "bg-gray-800 text-gray-400"
-                      }`}
-                    >
-                      {p.idx}
-                    </div>
-                    <div>
-                      <p className="text-xs text-white">{p.name}</p>
-                      <p className="text-[10px] text-gray-600">{p.role}</p>
-                    </div>
+                  <div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center text-[13px] text-gray-400  shrink-0">
+                    {p.idx}
                   </div>
-                  <span className="text-[10px] text-gray-500 font-mono">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm  truncate">
+                      {p.name}
+                    </p>
+                    <p className="text-gray-500 text-[10px]">{p.role}</p>
+                  </div>
+                  <span className="text-gray-500 text-[10px] font-mono shrink-0">
                     {p.playerId}
                   </span>
                 </div>
@@ -339,10 +224,10 @@ function TeamDetailModal({
         </div>
 
         {/* FOOTER */}
-        <div className="px-6 py-4 border-t border-gray-800 flex justify-end">
+        <div className="px-5 pb-5">
           <button
             onClick={onClose}
-            className="border border-gray-800 text-gray-400 px-5 py-2 text-xs tracking-widest rounded-lg hover:border-gray-700 hover:text-white transition-all duration-150"
+            className="w-full py-2 rounded-lg bg-gray-800 text-gray-300 text-xs hover:bg-gray-700 transition-colors"
           >
             Close
           </button>
@@ -354,7 +239,17 @@ function TeamDetailModal({
 
 // ── MAIN ─────────────────────────────────────────────────
 export default function AdminTeams() {
-  const [teams] = useState(teamsData);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [summary, setSummary] = useState({
+    total: 0,
+    approved: 0,
+    pending: 0,
+    rejected: 0,
+  });
+  const [allTournaments, setAllTournaments] = useState<string[]>(["All"]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [search, setSearch] = useState("");
   const [tournamentFilter, setTournamentFilter] = useState("All");
   const [modeFilter, setModeFilter] = useState("All");
@@ -362,59 +257,78 @@ export default function AdminTeams() {
   const [viewTeam, setViewTeam] = useState<any>(null);
   const [visible, setVisible] = useState(false);
 
+  // Fetch data from API
+  const fetchTeams = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        search,
+        tournament: tournamentFilter,
+        mode: modeFilter,
+        status: statusFilter,
+      });
+      const res = await fetch(`/api/admin/teams?${params}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      const data = await res.json();
+      setTeams(data.teams);
+      setSummary(data.summary);
+      setAllTournaments(["All", ...data.tournaments]);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load teams");
+    } finally {
+      setLoading(false);
+    }
+  }, [search, tournamentFilter, modeFilter, statusFilter]);
+
   useEffect(() => {
+    fetchTeams();
     setTimeout(() => setVisible(true), 60);
-  }, []);
+  }, [fetchTeams]);
 
-  const allTournaments = [
-    "All",
-    ...Array.from(new Set(teams.map((t) => t.tournament))),
-  ];
-
-  const filtered = teams.filter((t) => {
-    const q = search.toLowerCase();
-    const matchSearch =
-      t.teamName.toLowerCase().includes(q) ||
-      t.captain.name.toLowerCase().includes(q) ||
-      t.tournament.toLowerCase().includes(q) ||
-      t.txnId.toLowerCase().includes(q);
-    const matchTournament =
-      tournamentFilter === "All" || t.tournament === tournamentFilter;
-    const matchMode = modeFilter === "All" || t.mode === modeFilter;
-    const matchStatus =
-      statusFilter === "All" || t.paymentStatus === statusFilter;
-    return matchSearch && matchTournament && matchMode && matchStatus;
-  });
-
-  const total = teams.length;
-  const approved = teams.filter((t) => t.paymentStatus === "Approved").length;
-  const pending = teams.filter((t) => t.paymentStatus === "Pending").length;
-  const rejected = teams.filter((t) => t.paymentStatus === "Rejected").length;
+  const total = summary.total;
+  const approved = summary.approved;
+  const pending = summary.pending;
+  const rejected = summary.rejected;
 
   return (
-    <div className="bg-black min-h-screen text-white px-4 sm:px-6 py-10 text-sm">
+    <div
+      className={`min-h-screen bg-[#0b0b0b] text-white px-4 py-8 md:px-8 transition-all duration-500 ${
+        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+      }`}
+    >
       {viewTeam && (
         <TeamDetailModal team={viewTeam} onClose={() => setViewTeam(null)} />
       )}
 
-      <div className="max-w-7xl mx-auto space-y-5">
+      <div className="max-w-7xl mx-auto space-y-6">
         {/* HEADER */}
-        <div
-          className={`transition-all duration-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-3"}`}
-        >
-          <h1 className="text-xl tracking-widest text-white">
+        <div>
+          <h1 className="text-xl text-white flex items-center gap-2">
+            <FontAwesomeIcon
+              icon={faShield}
+              className="text-[#F2AA00] w-4 h-4"
+            />
             Registered Teams
           </h1>
-          <p className="text-gray-600 text-xs mt-1 tracking-wide">
+          <p className="text-gray-500 text-xs mt-1">
             All team registrations with player details and payment status
           </p>
         </div>
 
+        {/* ERROR */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
         {/* SUMMARY CARDS */}
-        <div
-          className={`grid grid-cols-2 sm:grid-cols-4 gap-3 transition-all duration-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
-          style={{ transitionDelay: "80ms" }}
-        >
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             {
               label: "Total Teams",
@@ -443,35 +357,30 @@ export default function AdminTeams() {
           ].map((s, i) => (
             <div
               key={i}
-              className="bg-[#0b0b0b] border border-gray-800 rounded-xl px-4 py-3 hover:border-gray-700 transition-colors duration-200 flex items-center gap-3"
+              className="bg-[#111] border border-gray-800 rounded-xl p-4 flex items-center gap-3"
             >
-              <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#F2AA00]/10 flex-shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-gray-800/60 flex items-center justify-center">
                 <FontAwesomeIcon
                   icon={s.icon}
-                  className="text-[#F2AA00] text-xs"
+                  className={`w-3.5 h-3.5 ${s.color}`}
                 />
               </div>
               <div>
-                <p className="text-gray-600 text-[9px] tracking-widest uppercase">
+                <p className="text-gray-500 text-[10px] uppercase tracking-widest">
                   {s.label}
                 </p>
-                <p className={`text-xl font-mono mt-0.5 ${s.color}`}>
-                  {s.value}
-                </p>
+                <p className={`text-xl ${s.color}`}>{s.value}</p>
               </div>
             </div>
           ))}
         </div>
 
         {/* SEARCH + FILTERS */}
-        <div
-          className={`flex flex-col sm:flex-row gap-3 transition-all duration-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
-          style={{ transitionDelay: "160ms" }}
-        >
-          <div className="relative flex-1">
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="relative flex-1 min-w-[200px]">
             <FontAwesomeIcon
               icon={faMagnifyingGlass}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600 text-xs"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 w-3 h-3"
             />
             <input
               value={search}
@@ -494,7 +403,7 @@ export default function AdminTeams() {
             </select>
             <FontAwesomeIcon
               icon={faChevronDown}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 text-[9px] pointer-events-none"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-600 w-2.5 h-2.5 pointer-events-none"
             />
           </div>
 
@@ -511,7 +420,7 @@ export default function AdminTeams() {
             </select>
             <FontAwesomeIcon
               icon={faChevronDown}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 text-[9px] pointer-events-none"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-600 w-2.5 h-2.5 pointer-events-none"
             />
           </div>
 
@@ -528,20 +437,17 @@ export default function AdminTeams() {
             </select>
             <FontAwesomeIcon
               icon={faChevronDown}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 text-[9px] pointer-events-none"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-600 w-2.5 h-2.5 pointer-events-none"
             />
           </div>
         </div>
 
         {/* TABLE */}
-        <div
-          className={`bg-[#0b0b0b] border border-gray-800 rounded-xl overflow-hidden transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}
-          style={{ transitionDelay: "240ms" }}
-        >
+        <div className="bg-[#111] border border-gray-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px]">
+            <table className="w-full text-lg">
               <thead>
-                <tr className="border-b border-gray-800 bg-[#0f0f0f]">
+                <tr className="border-b border-gray-800">
                   {[
                     "Team",
                     "Tournament",
@@ -555,7 +461,7 @@ export default function AdminTeams() {
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-[10px] text-gray-600 tracking-widest uppercase px-4 py-3 text-left"
+                      className="text-left text-gray-500 px-4 py-3 text-sm tracking-widest uppercase"
                     >
                       {h}
                     </th>
@@ -563,150 +469,129 @@ export default function AdminTeams() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {loading ? (
                   <tr>
-                    <td
-                      colSpan={9}
-                      className="text-center py-14 text-gray-700 text-xs tracking-widest"
-                    >
+                    <td colSpan={9} className="text-center py-12 text-gray-600">
+                      <FontAwesomeIcon
+                        icon={faSpinner}
+                        className="w-5 h-5 animate-spin mx-auto"
+                      />
+                    </td>
+                  </tr>
+                ) : teams.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="text-center py-12 text-gray-600">
                       No teams found.
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((t, i) => (
+                  teams.map((t, i) => (
                     <tr
                       key={t.id}
-                      className={`border-b border-gray-800/50 last:border-0 hover:bg-[#111] group transition-all duration-300 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}`}
-                      style={{ transitionDelay: `${320 + i * 55}ms` }}
+                      className="border-b border-gray-800/50 hover:bg-white/[0.02] transition-colors duration-100"
                     >
                       {/* TEAM */}
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-[#F2AA00]/10 flex items-center justify-center flex-shrink-0 group-hover:bg-[#F2AA00]/20 transition-colors duration-200">
-                            <FontAwesomeIcon
-                              icon={modeIcon[t.mode]}
-                              className="text-[#F2AA00] text-xs"
-                            />
-                          </div>
-                          <div>
-                            <p className="text-sm text-white tracking-widest group-hover:text-[#F2AA00] transition-colors duration-200">
-                              {t.teamName}
-                            </p>
-                            <p className="text-[13px] text-gray-600 mt-0.5">
-                              {t.captain.name}
-                              <span className="text-gray-700">
-                                {" "}
-                                · {t.captain.playerId}
-                              </span>
-                            </p>
-                          </div>
-                        </div>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <p className="text-white">{t.teamName}</p>
+                        <p className="text-gray-500 mt-0.5">
+                          {t.captain?.name ?? "—"}{" "}
+                          <span className="text-gray-700">·</span>{" "}
+                          {t.captain?.playerId ?? "—"}
+                        </p>
                       </td>
 
                       {/* TOURNAMENT */}
-                      <td className="px-4 py-3.5">
-                        <p className="text-sm text-gray-300 max-w-[140px] truncate">
-                          {t.tournament}
-                        </p>
-                        <p className="text-[10px] text-gray-600 mt-0.5">
-                          {t.map}
-                        </p>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <p className="text-white">{t.tournament}</p>
+                        <p className="text-gray-500 mt-0.5">{t.map}</p>
                       </td>
 
                       {/* MODE */}
-                      <td className="px-4 py-3.5">
-                        <span className="text-[12px] px-2 py-0.5 rounded-md bg-[#F2AA00]/10 text-[#F2AA00] border border-[#F2AA00]/10 tracking-wide">
-                          {t.mode}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="flex items-center gap-1.5 text-gray-400">
+                          <FontAwesomeIcon
+                            icon={modeIcon[t.mode?.toLowerCase()] ?? faUsers}
+                            className="w-3 h-3"
+                          />
+                          {t.mode
+                            ? t.mode.charAt(0).toUpperCase() + t.mode.slice(1)
+                            : "—"}
                         </span>
                       </td>
 
                       {/* PLATFORM */}
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <span
-                          className={`text-[12px] px-2 py-0.5 rounded-md border tracking-wide ${platformColor[t.platform]}`}
+                          className={`px-2 py-0.5 rounded border text-[10px] ${platformColor[t.platform] ?? "bg-gray-800 text-gray-400 border-gray-700"}`}
                         >
                           {t.platform}
                         </span>
                       </td>
 
                       {/* PLAYERS */}
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center -space-x-1.5 mb-1">
                           {/* Captain */}
-                          <div
-                            title={`${t.captain.name} (Captain)`}
-                            className="w-7 h-7 rounded-full bg-[#F2AA00] flex items-center justify-center text-[10px] font-bold text-black z-20"
-                          >
-                            {t.captain.name[0]}
+                          <div className="w-6 h-6 rounded-full bg-[#F2AA00]/20 border border-[#F2AA00]/30 flex items-center justify-center text-[9px] text-[#F2AA00] z-10">
+                            {t.captain?.name?.[0] ?? "?"}
                           </div>
-
                           {/* Players */}
-                          {t.players.slice(0, 3).map((p, idx) => (
+                          {t.players.slice(0, 3).map((p: any, idx: number) => (
                             <div
                               key={idx}
-                              title={p.name}
-                              className="w-7 h-7 rounded-full bg-gray-800 flex items-center justify-center text-[10px] font-medium text-gray-200 -ml-2 z-10"
+                              className="w-6 h-6 rounded-full bg-gray-700 border border-gray-600 flex items-center justify-center text-[9px] text-gray-300 font-medium"
+                              style={{ zIndex: 9 - idx }}
                             >
-                              {p.name[0]}
+                              {p.name?.[0] ?? "?"}
                             </div>
                           ))}
-
-                          {/* Extra count */}
                           {t.players.length > 3 && (
-                            <div className="w-7 h-7 rounded-full bg-gray-300 border-2 border-white flex items-center justify-center text-[10px] font-semibold text-gray-800 -ml-2">
+                            <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-[9px] text-gray-500">
                               +{t.players.length - 3}
                             </div>
                           )}
                         </div>
-
-                        <p className="text-[10px] text-gray-600 mt-1">
+                        <p className="text-gray-500 text-[10px]">
                           {t.players.length + 1} player
                           {t.players.length + 1 > 1 ? "s" : ""}
                         </p>
                       </td>
 
                       {/* TXN ID */}
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-1">
-                          <FontAwesomeIcon
-                            icon={faHashtag}
-                            className="text-gray-700 text-[9px]"
-                          />
-                          <span className="text-[13px] text-gray-500 font-mono">
-                            {t.txnId}
-                          </span>
-                        </div>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-gray-400 font-mono text-[10px]">
+                          {t.txnId}
+                        </span>
                       </td>
 
                       {/* REGISTERED */}
-                      <td className="px-4 py-3.5 text-[12px] text-gray-500">
-                        {t.registeredAt}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-gray-500">
+                          {relativeTime(t.registeredAt)}
+                        </span>
                       </td>
 
                       {/* PAYMENT STATUS */}
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <span
-                          className={`text-[10px] px-2.5 py-1 rounded-md border flex items-center gap-1.5 w-fit ${paymentStyle[t.paymentStatus]}`}
+                          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] w-fit ${paymentStyle[t.paymentStatus]}`}
                         >
                           <FontAwesomeIcon
                             icon={paymentIcon[t.paymentStatus]}
-                            className="text-[8px]"
+                            className="w-2.5 h-2.5"
                           />
                           {t.paymentStatus}
                         </span>
                       </td>
 
                       {/* ACTION */}
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <button
                           onClick={() => setViewTeam(t)}
                           className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-800 text-gray-500 hover:border-gray-600 hover:text-white transition-all duration-150"
                           title="View full details"
                         >
-                          <FontAwesomeIcon
-                            icon={faEye}
-                            className="text-[9px]"
-                          />
+                          <FontAwesomeIcon icon={faEye} className="w-3 h-3" />
                         </button>
                       </td>
                     </tr>
@@ -717,24 +602,10 @@ export default function AdminTeams() {
           </div>
 
           {/* TABLE FOOTER */}
-          <div className="px-4 py-3 border-t border-gray-800 flex justify-between items-center">
-            <p className="text-[10px] text-gray-700 tracking-wide">
-              Showing {filtered.length} of {total} teams
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-800">
+            <p className="text-gray-600 text-xs">
+              Showing {teams.length} of {total} teams
             </p>
-            <div className="flex gap-1.5">
-              {["1", "2"].map((p) => (
-                <button
-                  key={p}
-                  className={`w-6 h-6 text-[10px] rounded-md border transition-all duration-150 ${
-                    p === "1"
-                      ? "bg-[#F2AA00] text-black border-[#F2AA00]"
-                      : "border-gray-800 text-gray-600 hover:border-gray-700"
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </div>

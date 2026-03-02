@@ -21,7 +21,9 @@
     --foreground: #0a0a0a;
   } 
 }
-
+html {
+  font-size: 16px; /* default is 16px → increase to 18 or 20 */
+}
 body {
   background: var(--background);
   color: var(--foreground);
