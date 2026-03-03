@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     // ✅ Insert DB (Prisma)
     const payment = await prisma.payment.create({
       data: {
-        user_id: user.id,
+        user_id: Number(user.id),
         tournament_id,
         amount,
         method,
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
 
   const data = await prisma.payment.findMany({
     where: {
-      user_id: user.id,
+      user_id: Number(user.id),
     },
     orderBy: {
       created_at: "desc",

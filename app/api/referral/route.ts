@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   try {
     // Fetch user's referral code and referral count
     const userRecord = await prisma.user.findUnique({
-      where: { id: user.id },
+      where: { id: Number(user.id) },
       select: {
         referral_code: true,
         referral_count: true,
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     // Fetch all referrals made by this user
     const referrals = await prisma.referral.findMany({
       where: {
-        referrer_id: user.id,
+        referrer_id: Number(user.id),
       },
       select: {
         id: true,

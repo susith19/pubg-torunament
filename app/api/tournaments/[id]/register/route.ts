@@ -6,13 +6,14 @@ import path from "path";
 
 export async function POST(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   const { user, error } = await requireAuth(req);
   if (error) return error;
 
   try {
     const { id } = await context.params;
+    const tournamentId = Number(id);
 
     const formData = await req.formData();
 
@@ -32,36 +33,38 @@ export async function POST(
     if (!team_name || !players || players.length < 4) {
       return NextResponse.json(
         { error: "Team & 4 players required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const captain = players.find((p: any) => p.is_captain);
     if (!captain) {
-      return NextResponse.json(
-        { error: "Captain required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Captain required" }, { status: 400 });
     }
 
     // 🔍 Tournament check
     const tournament = await prisma.tournament.findUnique({
-      where: { id },
+      where: { id: tournamentId },
     });
 
     if (!tournament) {
-      return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Tournament not found" },
+        { status: 404 },
+      );
     }
 
-    if (tournament.filled_slots >= tournament.total_slots) {
+    const totalSlots = tournament.total_slots ?? 0;
+
+    if (tournament.filled_slots >= totalSlots) {
       return NextResponse.json({ error: "Slots full" }, { status: 400 });
     }
 
     // ❌ Duplicate join
     const exists = await prisma.registration.findFirst({
       where: {
-        user_id: user.id,
-        tournament_id: id,
+        user_id: Number(user.id),
+        tournament_id: tournamentId,
       },
     });
 
@@ -77,7 +80,7 @@ export async function POST(
     const uploadPath = path.join(
       process.cwd(),
       "public/uploads/payments",
-      fileName
+      fileName,
     );
 
     fs.writeFileSync(uploadPath, buffer);
@@ -89,8 +92,8 @@ export async function POST(
       // Create registration
       const reg = await tx.registration.create({
         data: {
-          user_id: user.id,
-          tournament_id: id,
+          user_id: Number(user.id),
+          tournament_id: tournamentId,
           team_name,
           team_tag,
           captain_name: captain.player_name,
@@ -112,8 +115,8 @@ export async function POST(
       // Create payment
       const payment = await tx.payment.create({
         data: {
-          user_id: user.id,
-          tournament_id: id,
+          user_id: Number(user.id),
+          tournament_id: tournamentId,
           amount: tournament.entry_fee,
           method: "UPI",
           transaction_id,
@@ -130,7 +133,7 @@ export async function POST(
 
       // Update tournament filled slots
       await tx.tournament.update({
-        where: { id },
+        where: { id: tournamentId },
         data: { filled_slots: { increment: 1 } },
       });
 
@@ -142,12 +145,8 @@ export async function POST(
       registration_id: result.registration.id,
       payment_id: result.payment.id,
     });
-
   } catch (err) {
     console.error(err);
-    return NextResponse.json(
-      { error: "Registration failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Registration failed" }, { status: 500 });
   }
 }

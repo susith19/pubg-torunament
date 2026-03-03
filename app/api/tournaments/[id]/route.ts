@@ -3,28 +3,34 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await context.params;
 
     if (!id) {
-      return NextResponse.json({ error: "Tournament ID required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Tournament ID required" },
+        { status: 400 },
+      );
     }
 
     // ── TOURNAMENT ──────────────────────────────────────────
     const tournament = await prisma.tournament.findUnique({
-      where: { id },
+      where: { id: Number(id) },
     });
 
     if (!tournament) {
-      return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Tournament not found" },
+        { status: 404 },
+      );
     }
 
     // ── REGISTERED TEAMS (approved only) ───────────────────
     const teams = await prisma.registration.findMany({
       where: {
-        tournament_id: id,
+        tournament_id: Number(id),
         status: "approved",
       },
       select: {
@@ -58,10 +64,10 @@ export async function GET(
           players: players.map((p) => ({
             name: p.player_name,
             playerId: p.player_id,
-            isCaptain: p.is_captain === 1,
+            isCaptain: p.is_captain,
           })),
         };
-      })
+      }),
     );
 
     // ── LEADERBOARD ─────────────────────────────────────────
@@ -69,7 +75,7 @@ export async function GET(
       where: {
         type: "match_win",
         registration: {
-          tournament_id: id,
+          tournament_id: Number(id),
         },
       },
       select: {
@@ -86,7 +92,7 @@ export async function GET(
     });
 
     const leaderboard = leaderboardData.map((item) => ({
-      teamName: item.registration.team_name,
+      teamName: item.registration?.team_name ?? "—",
       points: item.points,
       awardedAt: item.created_at,
     }));
@@ -100,9 +106,12 @@ export async function GET(
       live: "Live",
     };
 
-    const fillPercent = tournament.total_slots > 0
-      ? Math.round((tournament.filled_slots / tournament.total_slots) * 100)
-      : 0;
+    const totalSlots = tournament.total_slots ?? 0;
+
+    const fillPercent =
+      totalSlots > 0
+        ? Math.round((tournament.filled_slots / totalSlots) * 100)
+        : 0;
 
     return NextResponse.json({
       success: true,
@@ -110,16 +119,21 @@ export async function GET(
         id: tournament.id,
         title: tournament.title,
         game: tournament.game,
-        mode: tournament.mode ? tournament.mode.charAt(0).toUpperCase() + tournament.mode.slice(1) : "—",
+        mode: tournament.mode
+          ? tournament.mode.charAt(0).toUpperCase() + tournament.mode.slice(1)
+          : "—",
         map: tournament.map,
-        status: STATUS_MAP[tournament.status?.toLowerCase()] ?? tournament.status,
+        status:
+          STATUS_MAP[tournament.status?.toLowerCase()] ?? tournament.status,
         fee: tournament.entry_fee ? `₹${tournament.entry_fee}` : "Free",
-        prize: tournament.prize_pool ? `₹${Number(tournament.prize_pool).toLocaleString("en-IN")}` : "TBA",
+        prize: tournament.prize_pool
+          ? `₹${Number(tournament.prize_pool).toLocaleString("en-IN")}`
+          : "TBA",
         platform: tournament.game === "BGMI" ? "Mobile" : "PC",
         fillPercent,
         slots: tournament.total_slots,
         filled: tournament.filled_slots,
-        slots_left: tournament.total_slots - tournament.filled_slots,
+        slots_left: (tournament.total_slots ?? 0) - tournament.filled_slots,
         startFormatted: tournament.start_date
           ? new Date(tournament.start_date).toLocaleString("en-IN", {
               day: "numeric",
@@ -135,9 +149,11 @@ export async function GET(
       leaderboard,
       totalTeams: teamsWithPlayers.length,
     });
-
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Failed to fetch tournament" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch tournament" },
+      { status: 500 },
+    );
   }
 }

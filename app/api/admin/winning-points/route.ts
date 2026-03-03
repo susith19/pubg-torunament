@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
 
-
 // ── GET — list all awarded points ─────────────────────────
 export async function GET(req: NextRequest) {
   const { error } = await requireAdmin(req);
@@ -21,7 +20,9 @@ export async function GET(req: NextRequest) {
   });
 
   // Fetch related registrations
-  const registrationIds = pointsRaw.map((p) => Number(p.reference_id));
+  const registrationIds = pointsRaw
+    .map((p) => p.registration_id)
+    .filter((id): id is number => id !== null);
 
   const registrations = await prisma.registration.findMany({
     where: {
@@ -37,13 +38,13 @@ export async function GET(req: NextRequest) {
   // ── FILTER + FORMAT ─────────────────────
   const awards = pointsRaw
     .map((p) => {
-      const reg = regMap.get(Number(p.reference_id));
+      const reg = p.registration_id ? regMap.get(p.registration_id) : null;
 
       return {
         id: p.id,
         teamName: reg?.team_name,
         tournament: reg?.tournament?.title,
-        position: p.reference_id,
+        position: p.registration_id,
         points: p.points,
         awardedAt: p.created_at,
       };
@@ -78,16 +79,11 @@ export async function GET(req: NextRequest) {
 
   // ── TOURNAMENT LIST ─────────────────────
   const tournaments = [
-    ...new Set(
-      registrations
-        .map((r) => r.tournament?.title)
-        .filter(Boolean)
-    ),
+    ...new Set(registrations.map((r) => r.tournament?.title).filter(Boolean)),
   ].sort();
 
   return NextResponse.json({ awards, summary, tournaments });
 }
-
 
 // ── POST — award points ─────────────────────────
 export async function POST(req: NextRequest) {
@@ -99,10 +95,7 @@ export async function POST(req: NextRequest) {
     const { registrationId, position, points } = body;
 
     if (!registrationId || !position || !points || points <= 0) {
-      return NextResponse.json(
-        { error: "Invalid payload" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
     // Get registration
@@ -113,7 +106,7 @@ export async function POST(req: NextRequest) {
     if (!reg) {
       return NextResponse.json(
         { error: "Registration not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -125,10 +118,9 @@ export async function POST(req: NextRequest) {
           user_id: reg.user_id!,
           points,
           type: "match_win",
-          reference_id: String(registrationId),
+          registration_id: Number(registrationId), // ✅ FIXED
         },
       });
-
       // Update user total points
       await tx.user.update({
         where: { id: reg.user_id! },
@@ -146,12 +138,11 @@ export async function POST(req: NextRequest) {
       success: true,
       id: result.id,
     });
-
   } catch (err) {
     console.error(err);
     return NextResponse.json(
       { error: "Failed to award points" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

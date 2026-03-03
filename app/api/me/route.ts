@@ -9,8 +9,8 @@ export async function GET(req: NextRequest) {
 
   const fullUser = await prisma.user.findFirst({
     where: {
-      id: user.id,
-      is_deleted: false,
+      id: Number(user.id), // ← fix
+      is_deleted: 0,
     },
   });
 
@@ -26,7 +26,7 @@ export async function PUT(req: NextRequest) {
 
   await prisma.user.update({
     where: {
-      id: user.id,
+      id: Number(user.id),
     },
     data: {
       name,
@@ -45,10 +45,10 @@ export async function DELETE(req: NextRequest) {
 
   await prisma.user.update({
     where: {
-      id: user.id,
+      id: Number(user.id),
     },
     data: {
-      is_deleted: true,
+      is_deleted: 1,
     },
   });
 

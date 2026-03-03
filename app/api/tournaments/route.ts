@@ -4,8 +4,8 @@ import { prisma } from "@/lib/prisma";
 // Public — used by /tournaments page with ?mode= and ?date= filters
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const mode = searchParams.get("mode") ?? "";  // solo | duo | squad | tdm
-  const date = searchParams.get("date") ?? "";  // Today | Tomorrow | This Week | Next Week
+  const mode = searchParams.get("mode") ?? ""; // solo | duo | squad | tdm
+  const date = searchParams.get("date") ?? ""; // Today | Tomorrow | This Week | Next Week
 
   const conditions: any = {};
   const now = new Date();
@@ -68,15 +68,9 @@ export async function GET(req: NextRequest) {
   // Fetch tournaments
   const tournaments = await prisma.tournament.findMany({
     where: conditions,
-    orderBy: [
-      {
-        status: {
-          sort: ["live", "open", "upcoming", "full", "closed"],
-          _sort: "asc",
-        },
-      },
-      { start_date: "asc" },
-    ],
+    orderBy: {
+      start_date: "asc",
+    },
   });
 
   // Normalize for frontend
@@ -92,8 +86,14 @@ export async function GET(req: NextRequest) {
     if (!startDate) return "—";
     const d = new Date(startDate);
     const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const diff = Math.round((dateOnly.getTime() - todayDate.getTime()) / 86400000);
+    const todayDate = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const diff = Math.round(
+      (dateOnly.getTime() - todayDate.getTime()) / 86400000,
+    );
 
     if (diff === 0) return "Today";
     if (diff === 1) return "Tomorrow";
@@ -119,7 +119,9 @@ export async function GET(req: NextRequest) {
     map: t.map,
     status: STATUS_MAP[t.status?.toLowerCase()] ?? t.status,
     fee: t.entry_fee ? `₹${t.entry_fee}` : "Free",
-    prize: t.prize_pool ? `₹${Number(t.prize_pool).toLocaleString("en-IN")}` : "TBA",
+    prize: t.prize_pool
+      ? `₹${Number(t.prize_pool).toLocaleString("en-IN")}`
+      : "TBA",
     platform: t.game === "BGMI" ? "Mobile" : "PC",
     dateLabel: dateLabel(t.start_date),
     timeLabel: timeLabel(t.start_date),
@@ -127,5 +129,8 @@ export async function GET(req: NextRequest) {
     filled: t.filled_slots,
   }));
 
-  return NextResponse.json({ tournaments: normalizedTournaments, total: normalizedTournaments.length });
+  return NextResponse.json({
+    tournaments: normalizedTournaments,
+    total: normalizedTournaments.length,
+  });
 }

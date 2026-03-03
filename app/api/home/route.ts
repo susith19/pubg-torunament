@@ -44,8 +44,11 @@ export async function GET() {
 
   const mapMatchesMap: Record<string, any> = {};
   for (const t of mapRaw) {
-    if (!mapMatchesMap[t.map]) {
-      mapMatchesMap[t.map] = t;
+    const mapName = t.map;
+    if (!mapName) continue;
+
+    if (!mapMatchesMap[mapName]) {
+      mapMatchesMap[mapName] = t;
     }
   }
   const mapMatches = Object.values(mapMatchesMap).slice(0, 4);
@@ -62,10 +65,11 @@ export async function GET() {
   });
 
   const modeMap: Record<string, number> = {};
+
   modeCountsRaw.forEach((m) => {
+    if (!m.mode) return;
     modeMap[m.mode.toLowerCase()] = m._count.mode;
   });
-
   // ── HELPERS ─────────────────────────────────────────────
   function normalizeStatus(s: string): string {
     const map: Record<string, string> = {
@@ -88,9 +92,7 @@ export async function GET() {
       slots: t.total_slots,
       filled: t.filled_slots,
       status: normalizeStatus(t.status),
-      mode: t.mode
-        ? t.mode.charAt(0).toUpperCase() + t.mode.slice(1)
-        : "—",
+      mode: t.mode ? t.mode.charAt(0).toUpperCase() + t.mode.slice(1) : "—",
       platform: t.game === "BGMI" ? "Mobile" : "PC",
     };
   }

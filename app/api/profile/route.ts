@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   try {
     // ── PROFILE ───────────────────────────────────────────────
     const profile = await prisma.user.findUnique({
-      where: { id: user.id },
+      where: { id: Number(user.id) },
       select: {
         id: true,
         name: true,
@@ -27,14 +27,14 @@ export async function GET(req: NextRequest) {
     // ── STATS ─────────────────────────────────────────────────
     const matchesPlayedCount = await prisma.registration.count({
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         status: "approved",
       },
     });
 
     const upcomingMatchesCount = await prisma.registration.count({
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         status: "approved",
         tournament: {
           status: {
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     const winPtsAgg = await prisma.point.aggregate({
       _sum: { points: true },
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         type: "match_win",
       },
     });
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     const referralPtsAgg = await prisma.point.aggregate({
       _sum: { points: true },
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         type: "referral",
       },
     });
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     const redeemedPtsAgg = await prisma.redeem.aggregate({
       _sum: { amount: true },
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         status: "approved",
       },
     });
@@ -109,7 +109,7 @@ export async function PUT(req: NextRequest) {
     const { name, phone } = await req.json();
 
     await prisma.user.update({
-      where: { id: user.id },
+      where: { id: Number(user.id) },
       data: {
         name,
         phone,

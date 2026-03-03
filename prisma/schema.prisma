@@ -23,29 +23,31 @@ model User {
   updated_at     DateTime @updatedAt
 
   // 🔥 RELATIONS
-  registrations  Registration[]
-  payments       Payment[]
-  points         Point[]
-  redeems        Redeem[]
+  registrations   Registration[]
+  payments        Payment[]
+  points          Point[]
+  redeems         Redeem[]
+  referrals_given Referral[]     @relation("Referrer")
+  referrals_taken Referral[]     @relation("ReferredUser")
 
   @@index([email])
 }
 
 model Tournament {
-  id            Int      @id @default(autoincrement())
-  title         String?
-  game          String?
-  mode          String?
-  map           String?
-  entry_fee     Int?
-  prize_pool    Int?
-  total_slots   Int?
-  filled_slots  Int      @default(0)
-  status        String   @default("upcoming")
-  room_id       String?
-  room_pass     String?
-  start_date    DateTime?
-  created_at    DateTime @default(now())
+  id           Int       @id @default(autoincrement())
+  title        String?
+  game         String?
+  mode         String?
+  map          String?
+  entry_fee    Int?
+  prize_pool   Int?
+  total_slots  Int?
+  filled_slots Int       @default(0)
+  status       String    @default("upcoming")
+  room_id      String?
+  room_pass    String?
+  start_date   DateTime?
+  created_at   DateTime  @default(now())
 
   // 🔥 RELATIONS
   registrations Registration[]
@@ -55,10 +57,10 @@ model Tournament {
 }
 
 model Registration {
-  id                Int      @id @default(autoincrement())
-  user_id           Int
-  tournament_id     Int
-  payment_id        Int?
+  id            Int  @id @default(autoincrement())
+  user_id       Int
+  tournament_id Int
+  payment_id    Int?
 
   team_name         String?
   team_tag          String?
@@ -73,11 +75,11 @@ model Registration {
   payment    Payment?   @relation(fields: [payment_id], references: [id])
   players    Player[]
 
+  points Point[] // ✅ ✅ ✅ ADD THIS LINE
+
+  @@unique([user_id, tournament_id])
   @@index([user_id])
   @@index([tournament_id])
-
-  // 🚫 Prevent duplicate registration per user per tournament
-  @@unique([user_id, tournament_id])
 }
 
 model Player {
@@ -105,8 +107,8 @@ model Payment {
   created_at     DateTime @default(now())
 
   // 🔥 RELATIONS
-  user         User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  tournament   Tournament   @relation(fields: [tournament_id], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  tournament    Tournament     @relation(fields: [tournament_id], references: [id], onDelete: Cascade)
   registrations Registration[]
 
   @@index([user_id])
@@ -115,16 +117,18 @@ model Payment {
 }
 
 model Point {
-  id           Int      @id @default(autoincrement())
-  user_id      Int
-  points       Int?
-  type         String?
-  reference_id String?
-  created_at   DateTime @default(now())
+  id              Int      @id @default(autoincrement())
+  user_id         Int
+  points          Int?
+  type            String?
+  registration_id Int? // ✅ FIX
+  created_at      DateTime @default(now())
 
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  registration Registration? @relation(fields: [registration_id], references: [id])
 
   @@index([user_id])
+  @@index([registration_id])
 }
 
 model Redeem {
@@ -148,6 +152,10 @@ model Referral {
   referred_user_id Int
   points_given     Int?
   created_at       DateTime @default(now())
+
+  // 🔥 ADD RELATIONS
+  referrer      User @relation("Referrer", fields: [referrer_id], references: [id], onDelete: Cascade)
+  referred_user User @relation("ReferredUser", fields: [referred_user_id], references: [id], onDelete: Cascade)
 
   @@index([referrer_id])
   @@index([referred_user_id])

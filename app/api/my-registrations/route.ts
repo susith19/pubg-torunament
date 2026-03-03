@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
 
   const rows = await prisma.registration.findMany({
     where: {
-      user_id: user.id,
+      user_id: Number(user.id),
     },
     include: {
       tournament: {

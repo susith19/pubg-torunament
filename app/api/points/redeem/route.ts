@@ -10,17 +10,23 @@ export async function POST(req: NextRequest) {
     const { points, method, detail } = await req.json();
 
     if (!points || points < 200) {
-      return NextResponse.json({ error: "Minimum 200 points required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Minimum 200 points required" },
+        { status: 400 },
+      );
     }
     if (!method || !detail?.trim()) {
-      return NextResponse.json({ error: "Payout details required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Payout details required" },
+        { status: 400 },
+      );
     }
 
     // Check available balance
     const winPtsAgg = await prisma.point.aggregate({
       _sum: { points: true },
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         type: { in: ["match_win", "referral"] },
       },
     });
@@ -28,7 +34,7 @@ export async function POST(req: NextRequest) {
     const redeemedAgg = await prisma.redeem.aggregate({
       _sum: { amount: true },
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         status: { in: ["approved", "pending"] },
       },
     });
@@ -38,16 +44,19 @@ export async function POST(req: NextRequest) {
     const available = winPts - redeemedPts;
 
     if (points > available) {
-      return NextResponse.json({ error: "Insufficient points balance" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Insufficient points balance" },
+        { status: 400 },
+      );
     }
 
     // Insert redeem request
     const redeem = await prisma.redeem.create({
       data: {
-        user_id: user.id,
-        amount: points,
-        method,
-        detail,
+        user_id: Number(user.id),
+        points_used: points, // ✅ correct field
+        amount: points, // or convert if needed
+        upi_id: detail, // ✅ map detail → upi_id
         status: "pending",
       },
     });
@@ -57,7 +66,6 @@ export async function POST(req: NextRequest) {
       redeemId: redeem.id,
       message: "Redeem request submitted. Processed in 2–24 hours.",
     });
-
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Redeem failed" }, { status: 500 });

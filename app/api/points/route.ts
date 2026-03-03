@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const winPtsAgg = await prisma.point.aggregate({
       _sum: { points: true },
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         type: "match_win",
       },
     });
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const referralPtsAgg = await prisma.point.aggregate({
       _sum: { points: true },
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         type: "referral",
       },
     });
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const redeemedPtsAgg = await prisma.redeem.aggregate({
       _sum: { amount: true },
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         status: "approved",
       },
     });
@@ -39,14 +39,14 @@ export async function GET(req: NextRequest) {
     // ── WINNING HISTORY ───────────────────────────────────────
     const winningHistoryRaw = await prisma.point.findMany({
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         type: "match_win",
       },
       select: {
         id: true,
         points: true,
         created_at: true,
-        reference_id: true,
+        registration_id: true,
         registration: {
           select: {
             team_name: true,
@@ -74,19 +74,14 @@ export async function GET(req: NextRequest) {
     // ── REFERRAL HISTORY ──────────────────────────────────────
     const referralHistoryRaw = await prisma.point.findMany({
       where: {
-        user_id: user.id,
+        user_id: Number(user.id),
         type: "referral",
       },
       select: {
         id: true,
         points: true,
         created_at: true,
-        reference_id: true,
-        referee: {
-          select: {
-            name: true,
-          },
-        },
+        registration_id: true,
       },
       orderBy: { created_at: "desc" },
       take: 20,
@@ -96,12 +91,11 @@ export async function GET(req: NextRequest) {
       id: r.id,
       earned: r.points,
       date: r.created_at,
-      userName: r.referee?.name ?? "Anonymous",
     }));
 
     // ── REDEEM HISTORY ────────────────────────────────────────
     const redeemHistoryRaw = await prisma.redeem.findMany({
-      where: { user_id: user.id },
+      where: { user_id: Number(user.id) },
       orderBy: { created_at: "desc" },
       take: 20,
     });
@@ -109,21 +103,26 @@ export async function GET(req: NextRequest) {
     const redeemHistory = redeemHistoryRaw.map((r) => ({
       id: r.id,
       amount: r.amount,
-      detail: r.detail,
-      method: r.method,
+      detail: r.upi_id, // ✅ correct mapping
       status: r.status,
       date: r.created_at,
     }));
 
     // ── REFERRAL CODE ─────────────────────────────────────────
     const userRecord = await prisma.user.findUnique({
-      where: { id: user.id },
+      where: { id: Number(user.id) },
       select: { referral_code: true },
     });
 
     // ── HELPERS ───────────────────────────────────────────────
     function badge(pos: number): string {
-      return pos === 1 ? "gold" : pos === 2 ? "silver" : pos === 3 ? "bronze" : "default";
+      return pos === 1
+        ? "gold"
+        : pos === 2
+          ? "silver"
+          : pos === 3
+            ? "bronze"
+            : "default";
     }
 
     function fmtDate(date: Date): string {
@@ -158,9 +157,11 @@ export async function GET(req: NextRequest) {
         date: fmtDate(r.date),
       })),
     });
-
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Failed to fetch rewards" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch rewards" },
+      { status: 500 },
+    );
   }
 }

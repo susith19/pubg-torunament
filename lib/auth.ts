@@ -3,11 +3,11 @@ import { adminAuth } from "./firebaseAdmin";
 import { prisma } from "./prisma";
 
 export interface AuthUser {
-  id: string;
-  uid: string;
-  email: string;
+  id: number;
+  uid: string | null;
+  email: string | null;
   role: string;
-  referral_code: string;
+  referral_code: string | null;
   referral_count: number;
 }
 
