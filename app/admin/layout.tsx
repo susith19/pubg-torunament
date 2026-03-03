@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -55,48 +56,49 @@ export default function AdminLayout({
 
   // 🔥 ADMIN CHECK
   useEffect(() => {
-    const checkAdmin = async () => {
-      try {
-        const token = localStorage.getItem("token");
-
-        if (!token) {
-          window.location.href = "/404";
-          return;
-        }
-
-        const res = await fetch("/api/auth/me", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!res.ok) {
-          window.location.href = "/404";
-          return;
-        }
-
-        const data = await res.json();
-
-        if (data.role !== "admin") {
-          window.location.href = "/404";
-          return;
-        }
-
-        setUser({
-          name: localStorage.getItem("name") || "Admin",
-          email: data.email || "admin@bgmi.gg",
-          role: data.role,
-        });
-      } catch (err) {
-        console.error(err);
-        window.location.href = "/404";
-      } finally {
-        setLoading(false);
+  const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+    try {
+      if (!firebaseUser) {
+        window.location.href = "/login";
+        return;
       }
-    };
 
-    checkAdmin();
-  }, []);
+      const token = await firebaseUser.getIdToken(true);
+
+      const res = await fetch("/api/auth/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+
+      if (res.status === 403) {
+        window.location.href = "/unauthorized";
+        return;
+      }
+
+      const data = await res.json();
+
+      setUser({
+        name: firebaseUser.displayName || "Admin",
+        email: data.email,
+        role: data.role,
+      });
+
+    } catch (err) {
+      console.error(err);
+      window.location.href = "/login";
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  return () => unsubscribe();
+}, []);
 
   // 🔥 block render until verified
   if (loading) return null;
@@ -118,9 +120,7 @@ export default function AdminLayout({
         {!collapsed && (
           <div>
             <p className="text-[#F2AA00] text-sm tracking-widest">Admin</p>
-            <p className="text-gray-700 text-[12px] uppercase">
-              Control Panel
-            </p>
+            <p className="text-gray-700 text-[12px] uppercase">Control Panel</p>
           </div>
         )}
       </div>
@@ -216,7 +216,8 @@ export default function AdminLayout({
           </button>
 
           <div className="text-sm text-gray-500">
-            Admin {pathname !== "/admin" && ` / ${pathname.split("/admin/")[1]}`}
+            Admin{" "}
+            {pathname !== "/admin" && ` / ${pathname.split("/admin/")[1]}`}
           </div>
 
           <div className="text-sm text-[#F2AA00] flex items-center gap-2">

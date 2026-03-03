@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
             user_id: referrer.id,
             points: POINTS,
             type: "referral",
-            reference_id: String(newUser.id),
+            reference_id: newUser.id,
           },
         });
 
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
             user_id: newUser.id,
             points: POINTS,
             type: "referral",
-            reference_id: String(referrer.id),
+            reference_id: referrer.id,
           },
         });
       }
