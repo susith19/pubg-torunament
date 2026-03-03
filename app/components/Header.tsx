@@ -204,8 +204,9 @@ export default function Header() {
     })
       .then((res) => res.json())
       .then((data) => {
-        if (!data.error) setUser(data);
-      });
+        if (data?.success && data?.user) {
+        setUser(data.user); // ✅ FIX HERE
+      }});
   }, []);
 
   const handleLogout = () => {

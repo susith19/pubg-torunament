@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebaseAdmin";
+import { prisma } from "@/lib/prisma"; // 👈 your DB
 
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
 
-    // ✅ Validate header format
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return NextResponse.json(
         { error: "No token provided" },
@@ -18,13 +18,25 @@ export async function GET(req: NextRequest) {
     // 🔐 Verify Firebase token
     const decoded = await adminAuth.verifyIdToken(token);
 
+    // ✅ Fetch from YOUR DB
+    const user = await prisma.user.findUnique({
+      where: { uid: decoded.uid },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
       user: {
-        uid: decoded.uid,
-        email: decoded.email,
-        name: decoded.name || "",
-        role: decoded.role || "user",
+        uid: user.uid,
+        email: user.email,
+        name: user.name,
+        role: user.role,
       },
     });
 
