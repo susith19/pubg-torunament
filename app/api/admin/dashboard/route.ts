@@ -124,7 +124,10 @@ export async function GET(req: NextRequest) {
   const pctChange = (now: number, prev: number) => {
     if (prev === 0) return { label: `+${now}`, up: true };
     const diff = ((now - prev) / prev) * 100;
-    return { label: `${diff >= 0 ? "+" : ""}${diff.toFixed(1)}%`, up: diff >= 0 };
+    return {
+      label: `${diff >= 0 ? "+" : ""}${diff.toFixed(1)}%`,
+      up: diff >= 0,
+    };
   };
 
   const absChange = (now: number, prev: number) => {
@@ -172,7 +175,7 @@ export async function GET(req: NextRequest) {
     take: 5,
   });
 
-  const normalizedTournaments = recentTournaments.map((t : any) => ({
+  const normalizedTournaments = recentTournaments.map((t: any) => ({
     name: t.title,
     map: t.map,
     mode: t.mode ? t.mode.charAt(0).toUpperCase() + t.mode.slice(1) : "—",
@@ -199,16 +202,68 @@ export async function GET(req: NextRequest) {
     return `${Math.floor(h / 24)}d ago`;
   }
 
-  const recentUsers = recentUsersRaw.map((u : any) => ({
+  const recentUsers = recentUsersRaw.map((u: any) => ({
     name: u.name ?? "—",
     email: u.email,
     joined: relativeTime(u.created_at),
     status: u.role === "banned" ? "Banned" : "Active",
   }));
 
-  return NextResponse.json({
-    stats,
-    recentTournaments: normalizedTournaments,
-    recentUsers,
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  const startWeek = new Date();
+  startWeek.setDate(now.getDate() - 6);
+  startWeek.setHours(0, 0, 0, 0);
+
+  const usersWeek = await prisma.user.findMany({
+    where: {
+      is_deleted: 0,
+      created_at: { gte: startWeek },
+    },
+    select: { created_at: true },
   });
+
+  const counts: Record<number, number> = {};
+  usersWeek.forEach((u) => {
+    const d = new Date(u.created_at).getDay();
+    counts[d] = (counts[d] || 0) + 1;
+  });
+
+  const barData = days.map((day, i) => ({
+    day,
+    value: counts[i] || 0,
+  }));
+
+  // ── ACTIVITY FEED ─────────────────────
+
+  const activity = [
+    {
+      text: `${thisMonthUsers} new users registered this month`,
+      iconKey: "users",
+      gold: false,
+    },
+    {
+      text: `${activeTournaments} tournaments currently active`,
+      iconKey: "trophy",
+      gold: true,
+    },
+    {
+      text: `₹${totalRevenue.toLocaleString("en-IN")} total revenue`,
+      iconKey: "rupee",
+      gold: true,
+    },
+    {
+      text: `${pendingRedeems} redeem requests pending`,
+      iconKey: "redeem",
+      gold: false,
+    },
+  ];
+
+  return NextResponse.json({
+  stats,
+  barData,
+  activity,
+  recentTournaments: normalizedTournaments,
+  recentUsers,
+});
 }
