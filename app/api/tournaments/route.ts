@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
     prize: t.prize_pool
       ? `₹${Number(t.prize_pool).toLocaleString("en-IN")}`
       : "TBA",
-    platform: t.game === "BGMI" ? "Mobile" : "PC",
+    platform: t.game,
     dateLabel: dateLabel(t.start_date),
     timeLabel: timeLabel(t.start_date),
     slots: t.total_slots,

@@ -43,14 +43,26 @@ const platformColor: Record<string, string> = {
 // relative time helper — handles SQLite "2026-02-26 12:08:32" format
 function relativeTime(iso: string) {
   if (!iso) return "—";
-  // SQLite uses space separator; replace with T for cross-browser Date parsing
-  const diff = Date.now() - new Date(iso.replace(" ", "T") + "Z").getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m} min ago`;
+
+  // Normalize space → T, then only add Z if no timezone already present
+  const normalized = iso.replace(" ", "T");
+  const hasTimezone = normalized.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(normalized);
+  const dateStr = hasTimezone ? normalized : normalized + "Z";
+
+  const diff = Date.now() - new Date(dateStr).getTime();
+  if (isNaN(diff) || diff < 0) return "just now";
+
+  const s = Math.floor(diff / 1000);
+  if (s < 60)  return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60)  return `${m} min ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24)  return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30)  return `${d}d ago`;
+  const mo = Math.floor(d / 30);
+  if (mo < 12) return `${mo}mo ago`;
+  return `${Math.floor(mo / 12)}y ago`;
 }
 
 // ── DETAIL MODAL ─────────────────────────────────────────
@@ -522,7 +534,7 @@ export default function AdminTeams() {
                       {/* PLATFORM */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span
-                          className={`px-2 py-0.5 rounded border text-[10px] ${platformColor[t.platform] ?? "bg-gray-800 text-gray-400 border-gray-700"}`}
+                          className={`px-2 py-0.5 rounded border text-[14px] ${platformColor[t.platform] ?? "bg-gray-800 text-gray-400 border-gray-700"}`}
                         >
                           {t.platform}
                         </span>
@@ -559,7 +571,7 @@ export default function AdminTeams() {
 
                       {/* TXN ID */}
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="text-gray-400 font-mono text-[10px]">
+                        <span className="text-gray-400 font-mono text-[14px]">
                           {t.txnId}
                         </span>
                       </td>

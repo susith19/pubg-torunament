@@ -21,10 +21,10 @@ export async function getAuthUser(req: NextRequest): Promise<AuthUser | null> {
 
     const token = authHeader.split(" ")[1];
 
-    // ✅ Verify Firebase token
+    // 🔐 Verify Firebase token
     const decoded = await adminAuth.verifyIdToken(token);
 
-    // ✅ Get user from DB
+    // 👤 Get user from database
     const user = await prisma.user.findUnique({
       where: { uid: decoded.uid },
       select: {
@@ -40,8 +40,13 @@ export async function getAuthUser(req: NextRequest): Promise<AuthUser | null> {
     if (!user) return null;
 
     return user as AuthUser;
-  } catch (error) {
-    console.error("Auth error:", error);
+  } catch (error: any) {
+    if (error.code === "auth/id-token-expired") {
+      console.warn("Firebase token expired");
+    } else {
+      console.error("Auth error:", error);
+    }
+
     return null;
   }
 }

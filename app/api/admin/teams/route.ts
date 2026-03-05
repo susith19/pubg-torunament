@@ -20,7 +20,9 @@ export async function GET(req: NextRequest) {
   };
 
   const dbStatus =
-    status !== "All" ? statusMap[status.toLowerCase()] ?? status.toLowerCase() : undefined;
+    status !== "All"
+      ? (statusMap[status.toLowerCase()] ?? status.toLowerCase())
+      : undefined;
 
   // ── WHERE ───────────────────────────
   const where: any = {
@@ -76,13 +78,20 @@ export async function GET(req: NextRequest) {
   };
 
   const teams = registrations.map((r) => {
-    const captain =
-      r.players.find((p) => p.is_captain) || {
-        name: r.captain_name,
-        playerId: r.captain_player_id,
-      };
+    const captainPlayer = r.players.find((p) => p.is_captain);
 
-    const members = r.players.filter((p) => !p.is_captain);
+    const captain = {
+      // try all common field name variants — use whichever matches your schema
+      name: captainPlayer?.player_name ?? r.captain_name, // fallback from registration
+      playerId: captainPlayer?.player_id ?? r.captain_player_id, // fallback from registration
+    };
+
+    const members = r.players
+      .filter((p) => !p.is_captain)
+      .map((p) => ({
+        name: p.player_name ?? "—",
+        playerId: p.player_id ?? "—",
+      }));
 
     return {
       id: r.id,
@@ -103,8 +112,8 @@ export async function GET(req: NextRequest) {
         r.status === "approved"
           ? "Confirmed"
           : r.status === "rejected"
-          ? "Rejected"
-          : "Pending",
+            ? "Rejected"
+            : "Pending",
       captain,
       players: members,
     };

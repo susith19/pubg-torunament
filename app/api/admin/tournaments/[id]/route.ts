@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function PUT(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   const { user, error } = await requireAdmin(req);
   if (error) return error;
@@ -33,6 +33,9 @@ export async function PUT(
           game: body.game,
           mode: body.mode,
           map: body.map,
+          fee_solo: body.fee_solo ?? 50,
+          fee_duo: body.fee_duo ?? 100,
+          fee_squad: body.fee_squad ?? 150,
           entry_fee: body.entry_fee,
           prize_pool: body.prize_pool ?? 0,
           total_slots: body.total_slots,
@@ -62,7 +65,7 @@ export async function PUT(
     if (Object.keys(data).length === 0) {
       return NextResponse.json(
         { error: "No valid fields to update" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -79,16 +82,15 @@ export async function PUT(
   } catch (err) {
     return NextResponse.json(
       { error: "Tournament not found or update failed" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 }
 
-
 // ── DELETE ─────────────────────────────────────
 export async function DELETE(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   const { error } = await requireAdmin(req);
   if (error) return error;
@@ -104,7 +106,7 @@ export async function DELETE(
   } catch (err) {
     return NextResponse.json(
       { error: "Tournament not found" },
-      { status: 404 }
+      { status: 404 },
     );
   }
 }

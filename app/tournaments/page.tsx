@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faMobileScreen, faDesktop, faSpinner } from "@fortawesome/free-solid-svg-icons";
+import { faSpinner } from "@fortawesome/free-solid-svg-icons";
 
 function getActionButton(status: string) {
   switch (status) {
@@ -171,10 +171,6 @@ function TournamentsContent() {
                         {/* PLATFORM */}
                         <td className="px-5 py-4">
                           <div className="flex items-center justify-center gap-1.5">
-                            <FontAwesomeIcon
-                              icon={t.platform === "Mobile" ? faMobileScreen : faDesktop}
-                              className={`text-base ${t.platform === "Mobile" ? "text-green-400" : "text-blue-400"}`}
-                            />
                             <span className="text-md text-gray-400 tracking-wide">{t.platform === "Mobile" ? "BGMI" : "PUBG"}</span>
                           </div>
                         </td>

@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin";
 
 // Returns all approved registrations for dropdown
 export async function GET(req: NextRequest) {
+
   const { error } = await requireAdmin(req);
   if (error) return error;
 
@@ -14,11 +15,18 @@ export async function GET(req: NextRequest) {
     include: {
       tournament: {
         select: {
+          id: true,
           title: true,
           mode: true,
         },
       },
       players: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     },
     orderBy: [
       { tournament: { title: "asc" } },
@@ -26,15 +34,26 @@ export async function GET(req: NextRequest) {
     ],
   });
 
-  // ── FORMAT ───────────────────────────
-  const teams = registrations.map((r) => ({
-    registrationId: r.id,
-    teamName: r.team_name,
-    captain: r.captain_name,
-    tournament: r.tournament?.title,
-    mode: r.tournament?.mode,
-    players: r.players.length,
-  }));
+  const teams = registrations.map((r) => {
+
+    const isSolo = r.tournament?.mode === "solo";
+
+    return {
+      registrationId: r.id,
+      userId: r.user_id,
+      tournamentId: r.tournament_id,
+
+      teamName: isSolo
+        ? r.user?.name || r.captain_name
+        : r.team_name || "Unnamed Team",
+
+      captain: r.captain_name,
+      tournament: r.tournament?.title,
+      mode: r.tournament?.mode,
+
+      players: r.players.length,
+    };
+  });
 
   return NextResponse.json({ teams });
 }

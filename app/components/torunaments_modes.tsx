@@ -6,10 +6,10 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser, faUsers, faUserGroup, faBolt } from "@fortawesome/free-solid-svg-icons";
 
 const MODE_CONFIG = [
-  { key: "solo",  title: "Solo Battle",  tag: "PC & Mobile", icon: faUser      },
-  { key: "duo",   title: "Duo Queue",    tag: "PC & Mobile", icon: faUsers     },
-  { key: "squad", title: "Squad Wars",   tag: "PC & Mobile", icon: faUserGroup },
-  { key: "tdm",   title: "TDM Arena",    tag: "PC & Mobile", icon: faBolt      },
+  { key: "solo",  title: "Solo Battle",  tag: "PUBG & BGMI", icon: faUser      },
+  { key: "duo",   title: "Duo Queue",    tag: "PUBG & BGMI", icon: faUsers     },
+  { key: "squad", title: "Squad Wars",   tag: "PUBG & BGMI", icon: faUserGroup },
+  { key: "tdm",   title: "TDM Arena",    tag: "PUBG & BGMI", icon: faBolt      },
 ];
 
 export default function TournamentModes({ data }: { data?: Record<string, number> }) {

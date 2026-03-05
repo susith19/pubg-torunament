@@ -6,10 +6,7 @@ export async function POST(req: NextRequest) {
     const { uid, email } = await req.json();
 
     if (!uid || !email) {
-      return NextResponse.json(
-        { error: "Missing data" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing data" }, { status: 400 });
     }
 
     // 🔍 Check if user exists
@@ -24,18 +21,15 @@ export async function POST(req: NextRequest) {
           uid,
           email,
           role: "user",
+          referral_code: crypto.randomUUID().slice(0, 8), // generate code
         },
       });
     }
 
     return NextResponse.json({ message: "User synced" });
-
   } catch (err) {
     console.error(err);
 
-    return NextResponse.json(
-      { error: "Sync failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Sync failed" }, { status: 500 });
   }
 }

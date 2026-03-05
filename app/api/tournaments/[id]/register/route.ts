@@ -108,7 +108,7 @@ export async function POST(
           registration_id: reg.id,
           player_name: p.player_name,
           player_id: p.player_id,
-          is_captain: p.is_captain ? 1 : 0,
+          is_captain: Boolean(p.is_captain),
         })),
       });
 

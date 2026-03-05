@@ -129,7 +129,7 @@ export async function GET(
         prize: tournament.prize_pool
           ? `₹${Number(tournament.prize_pool).toLocaleString("en-IN")}`
           : "TBA",
-        platform: tournament.game === "BGMI" ? "Mobile" : "PC",
+        platform: tournament.game,
         fillPercent,
         slots: tournament.total_slots,
         filled: tournament.filled_slots,

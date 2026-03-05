@@ -53,7 +53,7 @@ export default function HowItWorks() {
       {/* bg decoration */}
       <div className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-[#F2AA00]/4 blur-[100px]" />
 
-      <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-16 items-center relative z-10">
+      <div className="max-w-9xl mx-auto grid md:grid-cols-2 gap-16 items-center relative z-10">
 
         {/* LEFT */}
         <div

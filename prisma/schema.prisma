@@ -14,7 +14,7 @@ model User {
   name           String?
   phone          String?
   role           String   @default("user")
-  referral_code  String?  @unique
+  referral_code  String   @unique
   referral_count Int      @default(0)
   referred_by    String?
   total_points   Int      @default(0)
@@ -22,13 +22,13 @@ model User {
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
-  // 🔥 RELATIONS
   registrations   Registration[]
   payments        Payment[]
   points          Point[]
   redeems         Redeem[]
-  referrals_given Referral[]     @relation("Referrer")
-  referrals_taken Referral[]     @relation("ReferredUser")
+
+  referrals_given Referral[] @relation("Referrer")
+  referrals_taken Referral[] @relation("ReferredUser")
 
   @@index([email])
 }
@@ -39,6 +39,9 @@ model Tournament {
   game         String?
   mode         String?
   map          String?
+  fee_solo     Int @default(50)
+  fee_duo      Int @default(100)
+  fee_squad    Int @default(150)
   entry_fee    Int?
   prize_pool   Int?
   total_slots  Int?
@@ -119,27 +122,43 @@ model Payment {
 model Point {
   id              Int      @id @default(autoincrement())
   user_id         Int
-  points          Int?
-  type            String?
-  registration_id Int? // ✅ FIX
+  points          Int
+  type            String   // match_win | referral | bonus
+
+  registration_id Int?
+  position        Int?     // 🏆 tournament position
+  kills           Int?     // 🔫 kills in match
+
+  reference_id    Int?     // referral user id
+  note            String?
+
   created_at      DateTime @default(now())
-  reference_id    Int?   // ✅ ADD THIS (for referral linking)
+
+  // 🔥 RELATIONS
   user         User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
   registration Registration? @relation(fields: [registration_id], references: [id])
 
   @@index([user_id])
   @@index([registration_id])
+  @@index([type])
 }
 
 model Redeem {
-  id          Int      @id @default(autoincrement())
-  user_id     Int
-  points_used Int?
-  amount      Int?
-  upi_id      String?
-  status      String   @default("pending")
-  created_at  DateTime @default(now())
+  id           Int      @id @default(autoincrement())
 
+  user_id      Int
+
+  points_used  Int      // points deducted from wallet
+  amount       Int      // ₹ value (1 point = ₹1)
+
+  upi_id       String   // user UPI ID
+
+  status       String   @default("pending") // pending | approved | rejected
+
+  created_at   DateTime @default(now())
+  processed_at DateTime?
+
+  // 🔗 RELATION
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
@@ -150,13 +169,24 @@ model Referral {
   id               Int      @id @default(autoincrement())
   referrer_id      Int
   referred_user_id Int
-  points_given     Int?
+  points_given     Int      @default(20)
   created_at       DateTime @default(now())
 
-  // 🔥 ADD RELATIONS
   referrer      User @relation("Referrer", fields: [referrer_id], references: [id], onDelete: Cascade)
   referred_user User @relation("ReferredUser", fields: [referred_user_id], references: [id], onDelete: Cascade)
 
+  @@unique([referrer_id, referred_user_id])
   @@index([referrer_id])
   @@index([referred_user_id])
+}
+
+model social_media {
+  id          Int      @id @default(autoincrement())
+  platform    String   // "youtube" | "instagram"
+  label       String   // e.g. "Live Stream" | "Winners Post"
+  url         String
+  is_live     Boolean  @default(false)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 }
