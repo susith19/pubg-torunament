@@ -190,3 +190,14 @@ model social_media {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 }
+
+model payment_config {
+  id          Int      @id @default(autoincrement())
+  upi_id      String   @default("")
+  upi_name    String   @default("")          // display name shown to payer
+  qr_path     String   @default("")          // server file path e.g. /uploads/qr/qr.png
+  qr_url      String   @default("")          // public URL e.g. /uploads/qr/qr.png
+  is_active   Boolean  @default(true)
+  note        String   @default("")          // optional note shown on payment screen
+  updated_at  DateTime @updatedAt
+}

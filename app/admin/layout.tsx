@@ -6,43 +6,71 @@ import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faGaugeHigh, faTrophy, faUsers, faUser, faCreditCard,
-  faBars, faCoins, faXmark, faRightFromBracket,
+  faGaugeHigh,
+  faTrophy,
+  faUsers,
+  faUser,
+  faCreditCard,
+  faBars,
+  faCoins,
+  faXmark,
+  faRightFromBracket,
   faShieldHalved,
+  faBuildingColumns,
 } from "@fortawesome/free-solid-svg-icons";
 
 const navItems = [
-  { label: "Dashboard",   href: "/admin",               icon: faGaugeHigh  },
-  { label: "Tournaments", href: "/admin/tournaments",    icon: faTrophy     },
-  { label: "Social Media Live", href: "/admin/social-media",    icon: faShieldHalved },
-  { label: "Teams",       href: "/admin/teams",          icon: faUsers      },
-  { label: "Points",      href: "/admin/points/winning", icon: faCoins      },
-  { label: "Users",       href: "/admin/users",          icon: faUser       },
-  { label: "Payments",    href: "/admin/payment",        icon: faCreditCard },
+  { label: "Dashboard", href: "/admin", icon: faGaugeHigh },
+  { label: "Tournaments", href: "/admin/tournaments", icon: faTrophy },
+  {
+    label: "Social Media Live",
+    href: "/admin/social-media",
+    icon: faShieldHalved,
+  },
+  { label: "Teams", href: "/admin/teams", icon: faUsers },
+  { label: "Points", href: "/admin/points/winning", icon: faCoins },
+  { label: "Users", href: "/admin/users", icon: faUser },
+  { label: "Payments", href: "/admin/payment", icon: faCreditCard },
+  {
+    label: "Account Details",
+    href: "/admin/payment-config",
+    icon: faBuildingColumns,
+  },
 ];
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
 
-  const [collapsed,   setCollapsed]   = useState(false);
-  const [mobileOpen,  setMobileOpen]  = useState(false);
-  const [user,        setUser]        = useState<any>(null);
-  const [loading,     setLoading]     = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   // close mobile sidebar on route change
-  useEffect(() => { setMobileOpen(false); }, [pathname]);
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   // lock body scroll when mobile sidebar is open
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [mobileOpen]);
 
   // 🔥 ADMIN AUTH CHECK
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       try {
-        if (!firebaseUser) { window.location.href = "/login"; return; }
+        if (!firebaseUser) {
+          window.location.href = "/login";
+          return;
+        }
 
         const token = await firebaseUser.getIdToken(true);
         localStorage.setItem("token", token);
@@ -51,14 +79,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        if (res.status === 401) { window.location.href = "/login";        return; }
-        if (res.status === 403) { window.location.href = "/unauthorized";  return; }
+        if (res.status === 401) {
+          window.location.href = "/login";
+          return;
+        }
+        if (res.status === 403) {
+          window.location.href = "/unauthorized";
+          return;
+        }
 
         const data = await res.json();
         setUser({
-          name:  firebaseUser.displayName || "Admin",
+          name: firebaseUser.displayName || "Admin",
           email: data.email,
-          role:  data.role,
+          role: data.role,
         });
       } catch (err) {
         console.error(err);
@@ -76,22 +110,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pageLabel = (() => {
     const seg = pathname.split("/admin/")[1];
     if (!seg) return "Dashboard";
-    return seg.split("/").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(" / ");
+    return seg
+      .split("/")
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .join(" / ");
   })();
 
   // ── shared sidebar inner content ─────────────────────
   const SidebarContent = ({ closeMobile }: { closeMobile?: () => void }) => (
     <div className="flex flex-col h-full">
-
       {/* LOGO */}
-      <div className={`flex items-center gap-3 px-4 py-5 border-b border-gray-800 ${collapsed ? "justify-center" : ""}`}>
+      <div
+        className={`flex items-center gap-3 px-4 py-5 border-b border-gray-800 ${collapsed ? "justify-center" : ""}`}
+      >
         <div className="w-8 h-8 rounded-lg bg-[#F2AA00] flex items-center justify-center flex-shrink-0">
-          <FontAwesomeIcon icon={faShieldHalved} className="text-black text-sm" />
+          <FontAwesomeIcon
+            icon={faShieldHalved}
+            className="text-black text-sm"
+          />
         </div>
         {!collapsed && (
           <div>
             <p className="text-[#F2AA00] text-sm tracking-widest">Admin</p>
-            <p className="text-gray-700 text-[10px] uppercase tracking-widest">Control Panel</p>
+            <p className="text-gray-700 text-[10px] uppercase tracking-widest">
+              Control Panel
+            </p>
           </div>
         )}
       </div>
@@ -101,7 +144,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {navItems.map((item) => {
           const isActive =
             pathname === item.href ||
-            (item.href !== "/admin" && pathname.startsWith(item.href));
+            (item.href !== "/admin" && pathname.startsWith(item.href + "/"));
           return (
             <Link
               key={item.href}
@@ -113,8 +156,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   : "text-gray-500 hover:bg-[#111] hover:text-gray-300"
               } ${collapsed ? "justify-center" : ""}`}
             >
-              <FontAwesomeIcon icon={item.icon} className="text-sm w-4 flex-shrink-0" />
-              {!collapsed && <span className="tracking-wide">{item.label}</span>}
+              <FontAwesomeIcon
+                icon={item.icon}
+                className="text-sm w-4 flex-shrink-0"
+              />
+              {!collapsed && (
+                <span className="tracking-wide">{item.label}</span>
+              )}
             </Link>
           );
         })}
@@ -135,7 +183,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-white truncate">{user?.name}</p>
-              <p className="text-[10px] text-gray-600 truncate">{user?.email}</p>
+              <p className="text-[10px] text-gray-600 truncate">
+                {user?.email}
+              </p>
             </div>
             <button
               onClick={() => {
@@ -157,9 +207,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex min-h-screen bg-black text-white">
-
       {/* ── DESKTOP SIDEBAR ─────────────────────────────── */}
-      <aside className={`hidden lg:flex flex-col bg-[#0b0b0b] border-r border-gray-800 flex-shrink-0 transition-all duration-300 ${collapsed ? "w-16" : "w-56"}`}>
+      <aside
+        className={`hidden lg:flex flex-col bg-[#0b0b0b] border-r border-gray-800 flex-shrink-0 transition-all duration-300 ${collapsed ? "w-16" : "w-56"}`}
+      >
         <SidebarContent />
       </aside>
 
@@ -167,7 +218,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Sits above everything when open */}
       <div
         className={`fixed inset-0 bg-black/70 backdrop-blur-sm lg:hidden transition-opacity duration-300 ${
-          mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          mobileOpen
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
         }`}
         style={{ zIndex: 40 }}
         onClick={() => setMobileOpen(false)}
@@ -195,7 +248,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* ── MAIN CONTENT ────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
-
         {/* HEADER */}
         <header className="flex justify-between items-center px-4 py-3 border-b border-gray-800 bg-black sticky top-0 z-30">
           <div className="flex items-center gap-3">
