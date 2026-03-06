@@ -1,7 +1,9 @@
-// app/api/tournaments/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+import { prisma } from "@/lib/prisma";
+
+// ── HELPERS ──────────────────────────────────────────────
+const normalizeStatus = (s: string) => (s ?? "open").toLowerCase();
 
 // ── UPDATE ───────────────────────────────────────────────
 export async function PUT(
@@ -15,7 +17,6 @@ export async function PUT(
     const { id } = await context.params;
     const body   = await req.json();
 
-    // Only update fields that were actually sent
     const data: Record<string, any> = {};
 
     if (body.title       !== undefined) data.title       = body.title;
