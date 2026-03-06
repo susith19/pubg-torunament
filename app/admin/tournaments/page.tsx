@@ -28,6 +28,7 @@ type Tournament = {
   feeSolo:  number;
   feeDuo:   number;
   feeSquad: number;
+  prizePool: number;
 };
 
 type FormData = {
@@ -738,6 +739,7 @@ export default function AdminTournaments() {
           feeSolo,
           feeDuo,
           feeSquad,
+          prizePool: Number(t.prize_pool) || 0,
         };
       });
       setTournaments(formatted);
@@ -862,7 +864,7 @@ export default function AdminTournaments() {
               feeDuo:    modal.tournament.feeDuo,
               feeSquad:  modal.tournament.feeSquad,
               status:    modal.tournament.status,
-              prizePool: "0",
+              prizePool: String(modal.tournament.prizePool),
               date, time,
             }}
             onSave={handleEdit}
