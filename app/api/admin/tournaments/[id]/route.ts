@@ -2,6 +2,83 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// ── UPDATE ───────────────────────────────────────────────
+export async function PUT(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { user, error } = await requireAdmin(req);
+  if (error) return error;
+
+  try {
+    const { id } = await context.params;
+    const body   = await req.json();
+
+    // Only update fields that were actually sent
+    const data: Record<string, any> = {};
+
+    if (body.title       !== undefined) data.title       = body.title;
+    if (body.game        !== undefined) data.game        = body.game;
+    if (body.mode        !== undefined) data.mode        = body.mode;
+    if (body.map         !== undefined) data.map         = body.map;
+    if (body.entry_fee   !== undefined) data.entry_fee   = body.entry_fee;
+    if (body.fee_solo    !== undefined) data.fee_solo    = body.fee_solo;
+    if (body.fee_duo     !== undefined) data.fee_duo     = body.fee_duo;
+    if (body.fee_squad   !== undefined) data.fee_squad   = body.fee_squad;
+    if (body.prize_pool  !== undefined) data.prize_pool  = body.prize_pool;
+    if (body.total_slots !== undefined) data.total_slots = body.total_slots;
+    if (body.status      !== undefined) data.status      = normalizeStatus(body.status);
+    if (body.room_id     !== undefined) data.room_id     = body.room_id;
+    if (body.room_pass   !== undefined) data.room_pass   = body.room_pass;
+
+    if (body.start_date !== undefined) {
+      const date = new Date(body.start_date);
+      if (isNaN(date.getTime()))
+        return NextResponse.json({ error: "Invalid date" }, { status: 400 });
+      data.start_date = date;
+    }
+
+    if (Object.keys(data).length === 0)
+      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+
+    const tournament = await prisma.tournament.update({
+      where: { id: Number(id) },
+      data,
+    });
+
+    return NextResponse.json({ success: true, tournament });
+  } catch (err: any) {
+    console.error(err);
+    if (err.code === "P2025")
+      return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+    return NextResponse.json({ error: "Update failed" }, { status: 500 });
+  }
+}
+
+// ── DELETE ───────────────────────────────────────────────
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { user, error } = await requireAdmin(req);
+  if (error) return error;
+
+  try {
+    const { id } = await context.params;
+
+    await prisma.tournament.delete({
+      where: { id: Number(id) },
+    });
+
+    return NextResponse.json({ success: true, deleted_by: user.email });
+  } catch (err: any) {
+    console.error(err);
+    if (err.code === "P2025")
+      return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+    return NextResponse.json({ error: "Delete failed" }, { status: 500 });
+  }
+}
+
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ id: string }> },
