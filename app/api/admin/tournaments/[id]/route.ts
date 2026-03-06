@@ -1,6 +1,7 @@
 // app/api/tournaments/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/requireAdmin";
 
 // ── UPDATE ───────────────────────────────────────────────
 export async function PUT(
