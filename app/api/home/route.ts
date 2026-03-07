@@ -32,7 +32,7 @@ export async function GET() {
   });
 
   const bgmiMatch = heroMatches.find((t) => t.game === "BGMI") ?? null;
-  const pubgMatch = heroMatches.find((t) => t.game === "PUBG" || t.game === "PUBG_PC") ?? null;
+  const pubgMatch = heroMatches.find((t) => t.game === "PUBG" || t.game === "PUBG") ?? null;
 
   // ── UPCOMING ────────────────────────────────────────────
   const upcomingRaw = await prisma.tournament.findMany({

@@ -69,6 +69,7 @@ export async function GET(
         platform: tournament.game,
         fillPercent, slots: tournament.total_slots, filled: tournament.filled_slots,
         slots_left: (tournament.total_slots ?? 0) - tournament.filled_slots,
+        start_date: tournament.start_date ? tournament.start_date.toISOString() : null,
         startFormatted: tournament.start_date
           ? new Date(tournament.start_date).toLocaleString("en-IN", {
               day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true,

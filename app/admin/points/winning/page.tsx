@@ -1,594 +1,215 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faTrophy, faPlus, faXmark, faMagnifyingGlass,
-  faChevronDown, faUsers, faUser, faSpinner, faCheck,
-  faStar, faSkull, faPencil, faTrash, faTriangleExclamation,
+  faTrophy, faUsers, faChevronRight, faChevronLeft,
+  faStar, faSkull, faCheck, faPen, faTrash, faPlus,
+  faSearch, faRotateRight, faCircleCheck,
+  faHourglass, faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 
-// ── points helpers (mirrors lib/points.ts exactly) ────────
-function getPlacementPoints(position: number, mode: string): number {
-  // normalize: "squad" is stored in DB but logic uses "team"
-  const m = mode === "squad" ? "team" : mode;
-  if (m === "solo") {
-    if (position === 1) return 500;
-    if (position === 2) return 400;
-    if (position === 3) return 300;
-    if (position === 4) return 200;
-    if (position === 5) return 100;
-    if (position <= 10) return 75;
-    if (position <= 15) return 50;
-    if (position <= 20) return 30;
-    return 0;
-  }
-  if (m === "duo") {
-    if (position === 1) return 500;
-    if (position === 2) return 400;
-    if (position === 3) return 300;
-    if (position === 4) return 200;
-    if (position <= 10) return 100;
-    if (position <= 15) return 50;
-    return 0;
-  }
-  if (m === "team") {
-    if (position === 1) return 500;
-    if (position === 2) return 400;
-    if (position === 3) return 300;
-    if (position === 4) return 200;
-    if (position === 5) return 180;
-    if (position <= 10) return 75;
-    return 0;
-  }
-  return 0;
-}
-function getKillPoints(kills: number): number { return kills * 5; }
-function calculateMatchPoints(position: number, kills: number, mode: string): number {
-  return getPlacementPoints(position, mode) + getKillPoints(kills);
+// ── Points helpers — imported from lib/points ────────────
+import {
+  getPlacementPoints,
+  getKillPoints,
+  calculateMatchPoints as calcTotal,
+} from "@/lib/points";
+
+// ── Types ─────────────────────────────────────────────────
+
+interface Tournament {
+  id:            number;
+  title:         string;
+  mode:          string;
+  status:        string;
+  start_date:    string | null;
+  approvedTeams: number;
+  awardedTeams:  number;
+  pendingTeams:  number;
 }
 
-const KILL_POINTS_PER_KILL = 5;
-
-const POSITION_LABEL: Record<number, string> = { 1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 5: "5th" };
-const POSITION_EMOJI: Record<number, string> = { 1: "🥇", 2: "🥈", 3: "🥉", 4: "4th", 5: "5th" };
-
-const positionColor: Record<number, string> = {
-  1: "bg-[#F2AA00]/10 border-[#F2AA00]/30 text-[#F2AA00]",
-  2: "bg-gray-300/10 border-gray-300/20 text-gray-300",
-  3: "bg-amber-700/10 border-amber-700/20 text-amber-600",
-  4: "bg-gray-800/40 border-gray-700 text-gray-500",
-  5: "bg-gray-800/40 border-gray-700 text-gray-500",
-};
-
-function relativeTime(iso: string) {
-  if (!iso) return "—";
-  const diff = Date.now() - new Date(iso.replace(" ", "T") + "Z").getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m} min ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso.replace(" ", "T")).toLocaleDateString("en-IN", {
-    day: "numeric", month: "short", year: "numeric",
-  });
+interface Player {
+  name:      string;
+  playerId:  string;
+  isCaptain: boolean;
 }
 
-type Team = {
-  registrationId: number;
-  userId: number;
-  tournamentId: number;
-  teamName: string;
-  captain: string;
-  tournament: string;
-  mode: string;
-  players: number;
-};
-
-type Award = {
-  id: number;
-  teamName: string;
-  tournament: string;
+interface Award {
+  id:       number;
   position: number;
-  kills: number;
-  mode: string;
-  points: number;        // total (placement + kills) stored in DB
-  awardedAt: string;
+  kills:    number;
+  points:   number;
+}
+
+interface Team {
+  registrationId: number;
+  userId:         number;
+  teamName:       string;
+  captain:        string;
+  mode:           string;
+  players:        Player[];
+  awarded:        boolean;
+  award:          Award | null;
+}
+
+// ── Helpers ───────────────────────────────────────────────
+
+const MODE_LABEL: Record<string, string> = {
+  solo: "Solo", duo: "Duo", squad: "Squad",
+};
+const MODE_COLOR: Record<string, string> = {
+  solo:  "text-blue-400  border-blue-500/30  bg-blue-500/10",
+  duo:   "text-purple-400 border-purple-500/30 bg-purple-500/10",
+  squad: "text-green-400  border-green-500/30  bg-green-500/10",
+};
+const POS_LABEL: Record<number, string> = {
+  1: "🥇 #1", 2: "🥈 #2", 3: "🥉 #3",
 };
 
-// ── Custom Dropdown ───────────────────────────────────────
-function TeamDropdown({ teams, selected, onSelect }: {
-  teams: Team[];
-  selected: Team | null;
-  onSelect: (t: Team | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+function posLabel(n: number) {
+  return POS_LABEL[n] ?? `#${n}`;
+}
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+// ── Toast ─────────────────────────────────────────────────
 
-  const filtered = query
-    ? teams.filter(
-        (t) =>
-          t.teamName.toLowerCase().includes(query.toLowerCase()) ||
-          t.tournament.toLowerCase().includes(query.toLowerCase()),
-      )
-    : teams;
-
+function Toast({ msg, type, onClose }: { msg: string; type: "ok" | "err"; onClose: () => void }) {
+  useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, [onClose]);
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between bg-[#0a0a0a] border border-gray-700 hover:border-[#F2AA00]/40 rounded-lg px-4 py-3 text-sm text-left transition-colors duration-150"
-      >
-        <span className={selected ? "text-white" : "text-gray-500"}>
-          {selected ? `${selected.teamName} — ${selected.tournament}` : "Choose a team..."}
-        </span>
-        <FontAwesomeIcon
-          icon={faChevronDown}
-          className={`text-gray-500 text-[10px] transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-
-      {open && (
-        <div className="absolute z-50 top-full mt-1 w-full bg-[#0f0f0f] border border-gray-700 rounded-lg overflow-hidden shadow-xl shadow-black/60">
-          <div className="px-3 py-2 border-b border-gray-800">
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search teams..."
-              className="w-full bg-transparent text-xs text-white placeholder-gray-600 outline-none"
-            />
-          </div>
-          {filtered.length === 0 ? (
-            <p className="text-gray-600 text-xs px-4 py-3 tracking-widest">No teams found</p>
-          ) : (
-            <ul className="max-h-52 overflow-y-auto">
-              {filtered.map((t) => (
-                <li
-                  key={t.registrationId}
-                  onClick={() => { onSelect(t); setOpen(false); setQuery(""); }}
-                  className={`flex items-center justify-between px-4 py-2.5 cursor-pointer transition-colors duration-100 hover:bg-[#F2AA00]/10 ${selected?.registrationId === t.registrationId ? "bg-[#F2AA00]/5 text-[#F2AA00]" : "text-gray-300"}`}
-                >
-                  <div>
-                    <p className="text-sm font-medium">{t.teamName}</p>
-                    <p className="text-[10px] text-gray-500 mt-0.5">
-                      {t.tournament} · {t.mode} · {t.players}P
-                    </p>
-                  </div>
-                  {selected?.registrationId === t.registrationId && (
-                    <FontAwesomeIcon icon={faCheck} className="text-[#F2AA00] text-xs" />
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl border text-sm tracking-wide transition-all duration-300
+      ${type === "ok" ? "bg-[#0b0b0b] border-[#F2AA00]/40 text-[#F2AA00]" : "bg-[#0b0b0b] border-red-500/40 text-red-400"}`}>
+      <FontAwesomeIcon icon={type === "ok" ? faCheck : faXmark} />
+      {msg}
+      <button onClick={onClose} className="ml-2 opacity-50 hover:opacity-100"><FontAwesomeIcon icon={faXmark} /></button>
     </div>
   );
 }
 
-// ── ADD POINTS MODAL ──────────────────────────────────────
-function AddPointsModal({ onClose, onSave }: { onClose: () => void; onSave: () => void }) {
-  const [teams, setTeams]               = useState<Team[]>([]);
-  const [loadingTeams, setLoadingTeams] = useState(true);
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [position, setPosition]         = useState(1);
-  // kills is required by backend: totalPoints = placementPoints + kills * 5
-  const [kills, setKills]               = useState(0);
-  const [customPos, setCustomPos]       = useState(false);
-  const [manualPos, setManualPos]       = useState(6);
-  const [saving, setSaving]             = useState(false);
-  const [err, setErr]                   = useState("");
+// ── Award Form Modal ──────────────────────────────────────
 
-  const valid = selectedTeam !== null && kills >= 0;
-
-  const effectivePos    = customPos ? manualPos : position;
-  const mode            = selectedTeam?.mode ?? "solo";
-  const placementPts    = getPlacementPoints(effectivePos, mode);
-  const killPts         = getKillPoints(kills);
-  const totalPts        = calculateMatchPoints(effectivePos, kills, mode);
-
-  useEffect(() => {
-    fetch("/api/admin/winning-points/teams", {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    })
-      .then((r) => r.json())
-      .then((d) => setTeams(d.teams ?? []))
-      .catch(() => setErr("Failed to load teams"))
-      .finally(() => setLoadingTeams(false));
-  }, []);
-
-  const handleSave = async () => {
-    if (!valid || !selectedTeam) return;
-    setSaving(true);
-    setErr("");
-    try {
-      const res = await fetch("/api/admin/winning-points", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-        // Backend requires: registrationId, position, kills
-        // Points are computed server-side: getPlacementPoints(position, mode) + kills * 5
-        body: JSON.stringify({
-          registrationId: selectedTeam.registrationId,
-          position: effectivePos,
-          kills,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed");
-      onSave();
-    } catch (e: any) {
-      setErr(e.message);
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-[#0e0e0e] border border-gray-800 rounded-xl w-full max-w-sm"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-800">
-          <div className="flex items-center gap-2">
-            <FontAwesomeIcon icon={faTrophy} className="text-[#F2AA00] text-sm" />
-            <p className="text-lg tracking-wide text-white">Award Winning Points</p>
-          </div>
-          <button onClick={onClose} className="text-gray-600 hover:text-white transition-colors">
-            <FontAwesomeIcon icon={faXmark} />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-5">
-          {err && (
-            <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-              {err}
-            </p>
-          )}
-
-          {/* Team selector */}
-          <div>
-            <p className="text-[11px] text-gray-600 tracking-widest uppercase mb-1.5">Select Team</p>
-            {loadingTeams ? (
-              <div className="flex items-center gap-2 bg-black border border-gray-800 rounded-lg px-4 py-3 text-xs text-gray-600">
-                <FontAwesomeIcon icon={faSpinner} className="animate-spin w-3 h-3" />
-                Loading teams...
-              </div>
-            ) : (
-              <TeamDropdown teams={teams} selected={selectedTeam} onSelect={setSelectedTeam} />
-            )}
-
-            {selectedTeam && (
-              <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-black border border-gray-800 rounded-lg">
-                <div className="w-6 h-6 rounded-full bg-[#F2AA00]/20 flex items-center justify-center text-[10px] text-[#F2AA00]">
-                  {selectedTeam.captain?.[0] ?? "?"}
-                </div>
-                <p className="text-[13px] text-gray-400">
-                  Captain: <span className="text-white">{selectedTeam.captain}</span>
-                  &nbsp;·&nbsp;
-                  <span className="capitalize">{selectedTeam.mode ?? "—"}</span>
-                  &nbsp;·&nbsp;{selectedTeam.players}P
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Position */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <p className="text-[11px] text-gray-600 tracking-widest uppercase">Finishing Position</p>
-              <button
-                onClick={() => { setCustomPos((c) => !c); }}
-                className="text-[10px] text-gray-700 hover:text-[#F2AA00] transition-colors tracking-widest"
-              >
-                {customPos ? "← presets" : "custom +"}
-              </button>
-            </div>
-            {customPos ? (
-              <div className="flex items-center gap-3 bg-black border border-gray-800 rounded-xl px-4 py-3">
-                <span className="text-gray-600 text-xs tracking-widest">Position #</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={99}
-                  value={manualPos}
-                  onChange={(e) => setManualPos(Math.max(1, Number(e.target.value)))}
-                  className="w-16 bg-transparent text-white font-mono text-xl outline-none border-b border-[#F2AA00]/30 focus:border-[#F2AA00] text-center"
-                />
-                <span className="text-gray-600 text-xs ml-auto">
-                  = <span className="text-gray-300 font-mono">{getPlacementPoints(manualPos, selectedTeam?.mode ?? "solo")} placement pts</span>
-                </span>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                {[1, 2, 3, 4, 5].map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setPosition(p)}
-                    className={`flex-1 py-2 text-sm rounded-lg border transition-all duration-150 ${
-                      position === p
-                        ? positionColor[p]
-                        : "border-gray-800 text-gray-600 hover:border-gray-700"
-                    }`}
-                  >
-                    <div>{POSITION_EMOJI[p]}</div>
-                    <div className="text-[11px] mt-0.5">{POSITION_LABEL[p]}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Kills input — required by backend */}
-          <div>
-            <p className="text-[11px] text-gray-600 tracking-widest uppercase mb-1.5">
-              Kill Count
-              <span className="ml-1 text-gray-700 normal-case tracking-normal">(+{KILL_POINTS_PER_KILL} pts each)</span>
-            </p>
-            <div className="flex items-center bg-black border border-gray-800 rounded-xl overflow-hidden">
-              <button
-                onClick={() => setKills((k) => Math.max(0, k - 1))}
-                className="px-4 py-3 text-gray-500 hover:text-white hover:bg-gray-900 transition-colors text-lg font-light select-none"
-              >
-                −
-              </button>
-              <div className="flex-1 flex items-center justify-center gap-2 py-3">
-                <FontAwesomeIcon icon={faSkull} className="text-gray-600 text-xs" />
-                <input
-                  type="number"
-                  min={0}
-                  value={kills}
-                  onChange={(e) => setKills(Math.max(0, Number(e.target.value)))}
-                  className="w-14 bg-transparent text-white font-mono text-xl text-center outline-none"
-                />
-                <span className="text-gray-600 text-xs">kills</span>
-              </div>
-              <button
-                onClick={() => setKills((k) => k + 1)}
-                className="px-4 py-3 text-gray-500 hover:text-white hover:bg-gray-900 transition-colors text-lg font-light select-none"
-              >
-                +
-              </button>
-            </div>
-          </div>
-
-          {/* Points preview — exact values mirrored from lib/points.ts */}
-          <div className="bg-black border border-gray-800 rounded-xl px-4 py-3 space-y-1.5">
-            <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-2">Points Breakdown</p>
-            <div className="flex justify-between text-xs text-gray-500">
-              <span className="flex items-center gap-1.5">
-                <FontAwesomeIcon icon={faStar} className="text-[#F2AA00]/50 text-[9px]" />
-                Placement ({POSITION_LABEL[effectivePos] ?? `#${effectivePos}`}
-                {selectedTeam && <span className="text-gray-600 ml-1 capitalize">· {mode}</span>})
-              </span>
-              <span className="text-gray-300 font-mono">+{placementPts}</span>
-            </div>
-            <div className="flex justify-between text-xs text-gray-500">
-              <span className="flex items-center gap-1.5">
-                <FontAwesomeIcon icon={faSkull} className="text-gray-600 text-[9px]" />
-                Kill points ({kills} × {KILL_POINTS_PER_KILL})
-              </span>
-              <span className="text-gray-300 font-mono">+{killPts}</span>
-            </div>
-            <div className="border-t border-gray-800 pt-1.5 flex justify-between items-center">
-              <span className="text-[10px] text-gray-600 tracking-widest uppercase">Total</span>
-              <span className="text-[#F2AA00] font-mono text-lg">+{totalPts} pts</span>
-            </div>
-          </div>
-
-          <button
-            onClick={handleSave}
-            disabled={!valid || saving}
-            className={`w-full py-3 text-sm tracking-widest rounded-lg border transition-all duration-150 active:scale-[0.97] flex items-center justify-center gap-2 ${
-              valid && !saving
-                ? "bg-[#F2AA00] text-black border-[#F2AA00] hover:bg-[#e09e00]"
-                : "bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed"
-            }`}
-          >
-            {saving && <FontAwesomeIcon icon={faSpinner} className="animate-spin w-3 h-3" />}
-            Award {totalPts} Points
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── EDIT POINTS MODAL ────────────────────────────────────
-function EditPointsModal({ award, onClose, onSave }: {
-  award: Award;
+function AwardModal({
+  team, onClose, onSave,
+}: {
+  team: Team;
   onClose: () => void;
-  onSave: () => void;
+  onSave: (registrationId: number, position: number, kills: number, existingAwardId?: number) => Promise<void>;
 }) {
-  const mode                          = award.mode ?? "solo";
-  const [position, setPosition]       = useState(Number(award.position));
-  const [kills, setKills]             = useState(award.kills ?? 0);
-  const [customPos, setCustomPos]     = useState(Number(award.position) > 5);
-  const [manualPos, setManualPos]     = useState(Number(award.position) > 5 ? Number(award.position) : 6);
-  const [saving, setSaving]           = useState(false);
-  const [err, setErr]                 = useState("");
+  const [position, setPosition] = useState(team.award?.position ?? 1);
+  const [kills,    setKills]    = useState(team.award?.kills    ?? 0);
+  const [saving,   setSaving]   = useState(false);
 
-  const effectivePos = customPos ? manualPos : position;
-  const placementPts = getPlacementPoints(effectivePos, mode);
+  const mode        = team.mode ?? "solo";
+  const placementPts = getPlacementPoints(position, mode);
   const killPts      = getKillPoints(kills);
-  const totalPts     = calculateMatchPoints(effectivePos, kills, mode);
+  const totalPts     = calcTotal(position, kills, mode);
 
-  const handleSave = async () => {
+  async function handleSave() {
     setSaving(true);
-    setErr("");
-    try {
-      const res = await fetch(`/api/admin/winning-points/${award.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-        body: JSON.stringify({ position: effectivePos, kills }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to update");
-      onSave();
-    } catch (e: any) {
-      setErr(e.message);
-      setSaving(false);
-    }
-  };
+    await onSave(team.registrationId, position, kills, team.award?.id);
+    setSaving(false);
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4" onClick={onClose}>
-      <div className="bg-[#0e0e0e] border border-gray-800 rounded-xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="bg-[#0d0d0d] border border-gray-800 rounded-2xl w-full max-w-md shadow-2xl">
         {/* Header */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-800">
-          <div className="flex items-center gap-2">
-            <FontAwesomeIcon icon={faPencil} className="text-[#F2AA00] text-sm" />
-            <p className="text-base tracking-wide text-white">Edit Award</p>
+        <div className="flex items-center justify-between p-6 border-b border-gray-800">
+          <div>
+            <p className="text-[10px] text-[#F2AA00]/60 tracking-[0.3em] uppercase mb-1">
+              {team.award ? "Edit Award" : "Award Points"}
+            </p>
+            <h3 className="text-white text-lg tracking-wide">{team.teamName}</h3>
           </div>
-          <button onClick={onClose} className="text-gray-600 hover:text-white transition-colors">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-700 text-gray-500 hover:text-white hover:border-gray-500 transition-all">
             <FontAwesomeIcon icon={faXmark} />
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
-          {err && (
-            <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</p>
-          )}
-
-          {/* Team info (read-only) */}
-          <div className="flex items-center gap-3 px-3 py-2.5 bg-black border border-gray-800 rounded-lg">
-            <div className="w-7 h-7 rounded-lg bg-[#F2AA00]/10 flex items-center justify-center flex-shrink-0">
-              <FontAwesomeIcon icon={faUsers} className="text-[#F2AA00] text-[9px]" />
-            </div>
-            <div>
-              <p className="text-sm text-white">{award.teamName}</p>
-              <p className="text-[10px] text-gray-600 mt-0.5">{award.tournament} · <span className="capitalize">{mode}</span></p>
+        {/* Players list */}
+        {team.players.length > 0 && (
+          <div className="px-6 pt-4">
+            <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-2">Players</p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {team.players.map((p, i) => (
+                <span key={i} className={`text-xs px-2.5 py-1 rounded-lg border ${p.isCaptain ? "border-[#F2AA00]/40 text-[#F2AA00] bg-[#F2AA00]/5" : "border-gray-700 text-gray-400 bg-gray-800/40"}`}>
+                  {p.isCaptain && <FontAwesomeIcon icon={faStar} className="mr-1.5 text-[9px]" />}
+                  {p.name}
+                </span>
+              ))}
             </div>
           </div>
+        )}
 
+        {/* Inputs */}
+        <div className="px-6 py-4 space-y-4">
           {/* Position */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <p className="text-[11px] text-gray-600 tracking-widest uppercase">Finishing Position</p>
-              <button
-                onClick={() => setCustomPos((c) => !c)}
-                className="text-[10px] text-gray-700 hover:text-[#F2AA00] transition-colors tracking-widest"
-              >
-                {customPos ? "← presets" : "custom +"}
-              </button>
+            <label className="block text-[10px] text-gray-500 tracking-widest uppercase mb-2">Placement</label>
+            <div className="grid grid-cols-5 gap-2">
+              {[1,2,3,4,5].map((p) => (
+                <button key={p} onClick={() => setPosition(p)}
+                  className={`py-2 rounded-lg border text-sm font-bold transition-all duration-150 ${position === p ? "border-[#F2AA00] bg-[#F2AA00]/10 text-[#F2AA00]" : "border-gray-700 text-gray-500 hover:border-gray-500"}`}>
+                  {posLabel(p)}
+                </button>
+              ))}
             </div>
-            {customPos ? (
-              <div className="flex items-center gap-3 bg-black border border-gray-800 rounded-xl px-4 py-3">
-                <span className="text-gray-600 text-xs tracking-widest">Position #</span>
-                <input
-                  type="number" min={1} max={99} value={manualPos}
-                  onChange={(e) => setManualPos(Math.max(1, Number(e.target.value)))}
-                  className="w-16 bg-transparent text-white font-mono text-xl outline-none border-b border-[#F2AA00]/30 focus:border-[#F2AA00] text-center"
-                />
-                <span className="text-gray-600 text-xs ml-auto">
-                  = <span className="text-gray-300 font-mono">{getPlacementPoints(manualPos, mode)} pts</span>
-                </span>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                {[1, 2, 3, 4, 5].map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setPosition(p)}
-                    className={`flex-1 py-2 text-sm rounded-lg border transition-all duration-150 ${position === p ? positionColor[p] : "border-gray-800 text-gray-600 hover:border-gray-700"}`}
-                  >
-                    <div>{POSITION_EMOJI[p]}</div>
-                    <div className="text-[11px] mt-0.5">{POSITION_LABEL[p]}</div>
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="mt-2">
+              <input
+                type="number" min={1} max={100} value={position}
+                onChange={(e) => setPosition(Number(e.target.value))}
+                className="w-full bg-[#111] border border-gray-700 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#F2AA00]/50 transition-colors"
+                placeholder="Custom position..."
+              />
+            </div>
           </div>
 
           {/* Kills */}
           <div>
-            <p className="text-[11px] text-gray-600 tracking-widest uppercase mb-1.5">
-              Kill Count <span className="ml-1 text-gray-700 normal-case tracking-normal">(+{KILL_POINTS_PER_KILL} pts each)</span>
-            </p>
-            <div className="flex items-center bg-black border border-gray-800 rounded-xl overflow-hidden">
-              <button
-                onClick={() => setKills((k) => Math.max(0, k - 1))}
-                className="px-4 py-3 text-gray-500 hover:text-white hover:bg-gray-900 transition-colors text-lg font-light select-none"
-              >−</button>
-              <div className="flex-1 flex items-center justify-center gap-2 py-3">
-                <FontAwesomeIcon icon={faSkull} className="text-gray-600 text-xs" />
-                <input
-                  type="number" min={0} value={kills}
-                  onChange={(e) => setKills(Math.max(0, Number(e.target.value)))}
-                  className="w-14 bg-transparent text-white font-mono text-xl text-center outline-none"
-                />
-                <span className="text-gray-600 text-xs">kills</span>
-              </div>
-              <button
-                onClick={() => setKills((k) => k + 1)}
-                className="px-4 py-3 text-gray-500 hover:text-white hover:bg-gray-900 transition-colors text-lg font-light select-none"
-              >+</button>
+            <label className="block text-[10px] text-gray-500 tracking-widest uppercase mb-2">
+              Kills  <span className="text-gray-600 normal-case">(×5 pts each)</span>
+            </label>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setKills(Math.max(0, kills - 1))}
+                className="w-9 h-9 flex items-center justify-center border border-gray-700 rounded-lg text-gray-400 hover:border-gray-500 hover:text-white transition-all text-lg font-bold">−</button>
+              <input type="number" min={0} value={kills} onChange={(e) => setKills(Math.max(0, Number(e.target.value)))}
+                className="flex-1 bg-[#111] border border-gray-700 rounded-lg px-4 py-2.5 text-white text-center text-lg font-bold focus:outline-none focus:border-[#F2AA00]/50 transition-colors" />
+              <button onClick={() => setKills(kills + 1)}
+                className="w-9 h-9 flex items-center justify-center border border-gray-700 rounded-lg text-gray-400 hover:border-gray-500 hover:text-white transition-all text-lg font-bold">+</button>
             </div>
           </div>
 
-          {/* Breakdown */}
-          <div className="bg-black border border-gray-800 rounded-xl px-4 py-3 space-y-1.5">
-            <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-2">Updated Breakdown</p>
+          {/* Points Breakdown */}
+          <div className="bg-black border border-gray-800 rounded-xl px-4 py-3 space-y-2">
+            <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1">Points Breakdown</p>
             <div className="flex justify-between text-xs text-gray-500">
               <span className="flex items-center gap-1.5">
                 <FontAwesomeIcon icon={faStar} className="text-[#F2AA00]/50 text-[9px]" />
-                Placement ({POSITION_LABEL[effectivePos] ?? `#${effectivePos}`} · <span className="capitalize ml-0.5">{mode}</span>)
+                Placement ({posLabel(position)} · <span className="capitalize ml-0.5">{mode}</span>)
               </span>
               <span className="text-gray-300 font-mono">+{placementPts}</span>
             </div>
             <div className="flex justify-between text-xs text-gray-500">
               <span className="flex items-center gap-1.5">
                 <FontAwesomeIcon icon={faSkull} className="text-gray-600 text-[9px]" />
-                Kill points ({kills} × {KILL_POINTS_PER_KILL})
+                Kill points ({kills} × 5)
               </span>
               <span className="text-gray-300 font-mono">+{killPts}</span>
             </div>
-            <div className="border-t border-gray-800 pt-1.5 flex justify-between items-center">
-              <span className="text-[10px] text-gray-600 tracking-widest uppercase">New Total</span>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-600 font-mono text-sm line-through">+{award.points}</span>
-                <span className="text-[#F2AA00] font-mono text-lg">+{totalPts} pts</span>
-              </div>
+            <div className="border-t border-gray-800 pt-2 flex justify-between items-center">
+              <span className="text-[10px] text-gray-600 tracking-widest uppercase">Total</span>
+              <span className="text-[#F2AA00] font-mono text-lg font-bold">+{totalPts} pts</span>
             </div>
           </div>
+        </div>
 
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className={`w-full py-3 text-sm tracking-widest rounded-lg border transition-all duration-150 active:scale-[0.97] flex items-center justify-center gap-2 ${
-              !saving ? "bg-[#F2AA00] text-black border-[#F2AA00] hover:bg-[#e09e00]" : "bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed"
-            }`}
-          >
-            {saving && <FontAwesomeIcon icon={faSpinner} className="animate-spin w-3 h-3" />}
-            Save Changes · {totalPts} pts
+        {/* Actions */}
+        <div className="flex gap-3 p-6 border-t border-gray-800">
+          <button onClick={onClose} className="flex-1 border border-gray-700 text-gray-400 py-2.5 rounded-xl text-sm tracking-wide hover:border-gray-500 hover:text-white transition-all">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 bg-[#F2AA00] text-black py-2.5 rounded-xl text-sm tracking-widest font-bold hover:bg-[#e09e00] active:scale-95 transition-all disabled:opacity-50">
+            {saving ? "Saving…" : team.award ? `Update · +${totalPts} pts` : `Award +${totalPts} pts`}
           </button>
         </div>
       </div>
@@ -596,396 +217,443 @@ function EditPointsModal({ award, onClose, onSave }: {
   );
 }
 
-// ── DELETE CONFIRM MODAL ──────────────────────────────────
-function DeleteConfirmModal({ award, onClose, onDeleted }: {
-  award: Award;
-  onClose: () => void;
-  onDeleted: () => void;
-}) {
-  const [deleting, setDeleting] = useState(false);
-  const [err, setErr]           = useState("");
+// ── Main Page ─────────────────────────────────────────────
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    setErr("");
+export default function AdminPointsPage() {
+  // ── State: tournament list ──
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [tLoading,    setTLoading]    = useState(true);
+  const [tSearch,     setTSearch]     = useState("");
+
+  // ── State: selected tournament / teams ──
+  const [selected,  setSelected]  = useState<Tournament | null>(null);
+  const [teams,     setTeams]     = useState<Team[]>([]);
+  const [teamsLoad, setTeamsLoad] = useState(false);
+  const [teamSearch, setTeamSearch] = useState("");
+  const [filter,    setFilter]    = useState<"all" | "pending" | "awarded">("all");
+
+  // ── State: modal ──
+  const [modalTeam, setModalTeam] = useState<Team | null>(null);
+
+  // ── State: delete confirm ──
+  const [deleteTarget, setDeleteTarget] = useState<{ awardId: number; teamName: string } | null>(null);
+
+  // ── Toast ──
+  const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
+  const showToast = (msg: string, type: "ok" | "err" = "ok") => setToast({ msg, type });
+
+  // ── Auth headers ──
+  const ah = () => ({
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+  });
+
+  // ── Fetch tournaments ──
+  const fetchTournaments = useCallback(async () => {
+    setTLoading(true);
     try {
-      const res = await fetch(`/api/admin/winning-points/${award.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to delete");
-      onDeleted();
-    } catch (e: any) {
-      setErr(e.message);
-      setDeleting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4" onClick={onClose}>
-      <div className="bg-[#0e0e0e] border border-gray-800 rounded-xl w-full max-w-xs" onClick={(e) => e.stopPropagation()}>
-
-        <div className="flex justify-between items-center px-5 py-4 border-b border-gray-800">
-          <div className="flex items-center gap-2">
-            <FontAwesomeIcon icon={faTriangleExclamation} className="text-red-400 text-sm" />
-            <p className="text-base tracking-wide text-white">Delete Award</p>
-          </div>
-          <button onClick={onClose} className="text-gray-600 hover:text-white transition-colors">
-            <FontAwesomeIcon icon={faXmark} />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
-          {err && (
-            <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</p>
-          )}
-
-          <div className="bg-red-500/5 border border-red-500/15 rounded-lg px-4 py-3 space-y-1">
-            <p className="text-white text-sm">{award.teamName}</p>
-            <p className="text-gray-500 text-xs">{award.tournament}</p>
-            <p className="text-red-400 font-mono text-sm mt-1">−{award.points} pts will be deducted</p>
-          </div>
-
-          <p className="text-gray-500 text-xs leading-relaxed">
-            This will permanently delete this award and deduct <span className="text-white font-mono">{award.points} pts</span> from the team's wallet. This action cannot be undone.
-          </p>
-
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="flex-1 py-2.5 text-xs tracking-widest rounded-lg border border-gray-800 text-gray-400 hover:bg-gray-900 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="flex-1 py-2.5 text-xs tracking-widest rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {deleting
-                ? <FontAwesomeIcon icon={faSpinner} className="animate-spin w-3 h-3" />
-                : <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
-              }
-              Delete
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── MAIN ─────────────────────────────────────────────────
-export default function AdminWinningPoints() {
-  const [awards, setAwards]               = useState<Award[]>([]);
-  const [summary, setSummary]             = useState({ totalPoints: 0, totalAwards: 0 });
-  const [tournamentList, setTournamentList] = useState<string[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [apiErr, setApiErr]               = useState("");
-  const [showModal, setShowModal]         = useState(false);
-  const [editAward, setEditAward]         = useState<Award | null>(null);
-  const [deleteAward, setDeleteAward]     = useState<Award | null>(null);
-  const [search, setSearch]               = useState("");
-  const [filter, setFilter]               = useState("All");
-  const [visible, setVisible]             = useState(false);
-  const [toast, setToast]                 = useState({ msg: "", show: false });
-
-  const pop = (msg: string) => {
-    setToast({ msg, show: true });
-    setTimeout(() => setToast((t) => ({ ...t, show: false })), 2500);
-  };
-
-  const fetchAwards = useCallback(async () => {
-    setLoading(true);
-    setApiErr("");
-    try {
-      const params = new URLSearchParams({ search, tournament: filter });
-      const res = await fetch(`/api/admin/winning-points?${params}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const data = await res.json();
-      setAwards(data.awards ?? []);
-      setSummary(data.summary ?? { totalPoints: 0, totalAwards: 0 });
-      setTournamentList(data.tournaments ?? []);
-    } catch (e: any) {
-      setApiErr(e.message ?? "Failed to load data");
+      const r = await fetch("/api/admin/points/tournaments", { headers: ah() });
+      const d = await r.json();
+      setTournaments(d.tournaments ?? []);
     } finally {
-      setLoading(false);
+      setTLoading(false);
     }
-  }, [search, filter]);
+  }, []);
 
-  useEffect(() => {
-    fetchAwards();
-    setTimeout(() => setVisible(true), 60);
-  }, [fetchAwards]);
+  useEffect(() => { fetchTournaments(); }, [fetchTournaments]);
 
-  const handleSaved = () => {
-    setShowModal(false);
-    fetchAwards();
-    pop("Points awarded successfully!");
-  };
+  // ── Fetch teams for selected tournament ──
+  const fetchTeams = useCallback(async (tid: number) => {
+    setTeamsLoad(true);
+    setTeams([]);
+    try {
+      const r = await fetch(`/api/admin/points/tournaments/${tid}/teams`, { headers: ah() });
+      const d = await r.json();
+      setTeams(d.teams ?? []);
+    } finally {
+      setTeamsLoad(false);
+    }
+  }, []);
 
-  const tournaments = ["All", ...tournamentList];
+  function selectTournament(t: Tournament) {
+    setSelected(t);
+    setTeamSearch("");
+    setFilter("all");
+    fetchTeams(t.id);
+  }
 
-  return (
-    <div className="bg-black min-h-screen text-white px-4 sm:px-6 py-10">
+  function goBack() {
+    setSelected(null);
+    setTeams([]);
+    fetchTournaments();
+  }
 
-      {/* Toast */}
-      <div
-        className={`fixed bottom-6 right-6 z-50 bg-[#F2AA00] text-black text-xs px-5 py-3 rounded-lg shadow-lg shadow-[#F2AA00]/20 tracking-widest transition-all duration-500 ${
-          toast.show ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6 pointer-events-none"
-        }`}
-      >
-        {toast.msg}
-      </div>
+  // ── Award / Edit ──
+  async function handleAward(
+    registrationId: number,
+    position: number,
+    kills: number,
+    existingAwardId?: number,
+  ) {
+    try {
+      if (existingAwardId) {
+        // Edit existing
+        const r = await fetch(`/api/admin/points/${existingAwardId}`, {
+          method: "PATCH",
+          headers: ah(),
+          body: JSON.stringify({ position, kills }),
+        });
+        if (!r.ok) throw new Error();
+        showToast("Award updated ✓");
+      } else {
+        // New award
+        const r = await fetch("/api/admin/points", {
+          method: "POST",
+          headers: ah(),
+          body: JSON.stringify({ registrationId, position, kills }),
+        });
+        if (!r.ok) throw new Error();
+        showToast("Points awarded ✓");
+      }
+      setModalTeam(null);
+      if (selected) fetchTeams(selected.id);
+    } catch {
+      showToast("Something went wrong", "err");
+    }
+  }
 
-      {showModal && <AddPointsModal onClose={() => setShowModal(false)} onSave={handleSaved} />}
-      {editAward && (
-        <EditPointsModal
-          award={editAward}
-          onClose={() => setEditAward(null)}
-          onSave={() => { setEditAward(null); fetchAwards(); pop("Award updated successfully!"); }}
-        />
-      )}
-      {deleteAward && (
-        <DeleteConfirmModal
-          award={deleteAward}
-          onClose={() => setDeleteAward(null)}
-          onDeleted={() => { setDeleteAward(null); fetchAwards(); pop("Award deleted."); }}
-        />
-      )}
+  // ── Delete ──
+  async function handleDelete(awardId: number) {
+    try {
+      const r = await fetch(`/api/admin/points/${awardId}`, { method: "DELETE", headers: ah() });
+      if (!r.ok) throw new Error();
+      showToast("Award removed");
+      setDeleteTarget(null);
+      if (selected) fetchTeams(selected.id);
+    } catch {
+      showToast("Delete failed", "err");
+    }
+  }
 
-      <div className="max-w-7xl mx-auto space-y-5">
+  // ── Filtered teams ──
+  const filteredTeams = teams.filter((t) => {
+    if (teamSearch && !t.teamName.toLowerCase().includes(teamSearch.toLowerCase())) return false;
+    if (filter === "pending") return !t.awarded;
+    if (filter === "awarded") return  t.awarded;
+    return true;
+  });
 
-        {/* HEADER */}
-        <div
-          className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-500 ${
-            visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-3"
-          }`}
-        >
+  const pendingCount = teams.filter((t) => !t.awarded).length;
+  const awardedCount = teams.filter((t) =>  t.awarded).length;
+
+  // ── Filtered tournaments ──
+  const filteredTournaments = tournaments.filter((t) =>
+    !tSearch || t.title.toLowerCase().includes(tSearch.toLowerCase())
+  );
+
+  // ═══════════════════════════════════════════════════════
+  // VIEW A: Tournament List
+  // ═══════════════════════════════════════════════════════
+  if (!selected) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl tracking-widest text-white">Winning Points</h1>
-            <p className="text-gray-600 text-xs mt-1 tracking-wide">
-              Award placement + kill points — auto-added to team wallet
-            </p>
+            <p className="text-[#F2AA00]/60 text-[10px] tracking-[0.4em] uppercase mb-1">Admin</p>
+            <h1 className="text-white text-2xl tracking-widest">Award Points</h1>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="self-start sm:self-auto bg-[#F2AA00] text-black px-5 py-2.5 text-xs tracking-widest rounded-lg hover:bg-[#e09e00] hover:shadow-lg hover:shadow-[#F2AA00]/20 active:scale-[0.97] transition-all duration-150 flex items-center gap-2"
-          >
-            <FontAwesomeIcon icon={faPlus} className="text-xs" />
-            Award Points
+          <button onClick={fetchTournaments}
+            className="flex items-center gap-2 border border-gray-700 text-gray-400 px-4 py-2 rounded-lg text-sm hover:border-gray-500 hover:text-white transition-all">
+            <FontAwesomeIcon icon={faRotateRight} className={tLoading ? "animate-spin" : ""} />
+            Refresh
           </button>
         </div>
 
-        {apiErr && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-400 text-xs">
-            {apiErr}
-          </div>
-        )}
+        {/* Search */}
+        <div className="relative mb-5">
+          <FontAwesomeIcon icon={faSearch} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600" />
+          <input value={tSearch} onChange={(e) => setTSearch(e.target.value)}
+            placeholder="Search tournaments…"
+            className="w-full bg-[#0b0b0b] border border-gray-800 rounded-xl pl-11 pr-4 py-3 text-white text-sm focus:outline-none focus:border-[#F2AA00]/40 transition-colors" />
+        </div>
 
-        {/* SUMMARY */}
-        <div
-          className={`grid grid-cols-3 gap-3 transition-all duration-500 ${
-            visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-          }`}
-          style={{ transitionDelay: "80ms" }}
-        >
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
           {[
-            { label: "Total Awarded",  value: `${summary.totalPoints} pts`, color: "text-[#F2AA00]" },
-            { label: "Awards Given",   value: summary.totalAwards,          color: "text-white"     },
-            { label: "Tournaments",    value: tournamentList.length,        color: "text-gray-300"  },
+            { label: "Tournaments",   value: tournaments.length,                              icon: faTrophy,       color: "text-[#F2AA00]" },
+            { label: "Pending Teams", value: tournaments.reduce((s,t) => s + t.pendingTeams, 0), icon: faHourglass, color: "text-amber-400"   },
+            { label: "Awarded Teams", value: tournaments.reduce((s,t) => s + t.awardedTeams, 0), icon: faCircleCheck,color: "text-green-400"  },
           ].map((s, i) => (
-            <div
-              key={i}
-              className="bg-[#0b0b0b] border border-gray-800 rounded-xl px-4 py-3 hover:border-gray-700 transition-colors duration-200"
-            >
-              <p className="text-gray-600 text-[9px] tracking-widest uppercase">{s.label}</p>
-              <p className={`text-xl font-mono mt-1 ${s.color}`}>{s.value}</p>
+            <div key={i} className="bg-[#0b0b0b] border border-gray-800 rounded-xl p-4 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-gray-800/60 flex items-center justify-center flex-shrink-0">
+                <FontAwesomeIcon icon={s.icon} className={s.color} />
+              </div>
+              <div>
+                <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+                <p className="text-gray-600 text-[11px] tracking-widest uppercase">{s.label}</p>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* FILTERS */}
-        <div
-          className={`flex gap-3 flex-col sm:flex-row transition-all duration-500 ${
-            visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-          }`}
-          style={{ transitionDelay: "160ms" }}
-        >
-          <div className="relative flex-1">
-            <FontAwesomeIcon
-              icon={faMagnifyingGlass}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600 text-xs"
-            />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search team or tournament..."
-              className="w-full bg-[#0b0b0b] border border-gray-800 focus:border-[#F2AA00]/40 rounded-lg pl-9 pr-4 py-2.5 text-sm text-white placeholder-gray-600 outline-none"
-            />
+        {/* Tournament list */}
+        {tLoading ? (
+          <div className="space-y-3">
+            {[1,2,3].map((i) => (
+              <div key={i} className="bg-[#0b0b0b] border border-gray-800 rounded-xl h-20 animate-pulse" />
+            ))}
           </div>
-          <div className="relative">
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="appearance-none bg-[#0b0b0b] border border-gray-800 rounded-lg px-4 py-2.5 pr-8 text-xs text-gray-400 outline-none cursor-pointer"
-            >
-              {tournaments.map((t) => (
-                <option key={t} style={{ background: "#0b0b0b", color: "#ccc" }}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <FontAwesomeIcon
-              icon={faChevronDown}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 text-[9px] pointer-events-none"
-            />
+        ) : filteredTournaments.length === 0 ? (
+          <div className="text-center py-20 text-gray-600">
+            <FontAwesomeIcon icon={faTrophy} className="text-4xl mb-3 block" />
+            No tournaments with approved registrations yet.
           </div>
-        </div>
-
-        {/* TABLE */}
-        <div
-          className={`bg-[#0b0b0b] border border-gray-800 rounded-xl overflow-hidden transition-all duration-700 ${
-            visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
-          }`}
-          style={{ transitionDelay: "240ms" }}
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px]">
-              <thead>
-                <tr className="border-b border-gray-800 bg-[#0f0f0f]">
-                  {["Team", "Tournament", "Position", "Placement Pts", "Kill Pts", "Total", "When", "Actions"].map((h) => (
-                    <th
-                      key={h}
-                      className="text-[11px] text-gray-600 tracking-widest uppercase px-4 py-3 text-left"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={8} className="text-center py-14">
-                      <FontAwesomeIcon icon={faSpinner} className="animate-spin text-gray-600 w-5 h-5" />
-                    </td>
-                  </tr>
-                ) : awards.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="text-center py-14 text-gray-700 text-xs tracking-widest">
-                      No awards yet.
-                    </td>
-                  </tr>
-                ) : (
-                  awards.map((a) => {
-                    const pos          = Number(a.position);
-                    const mode         = a.mode ?? "solo";
-                    const kills        = a.kills ?? 0;
-                    const placementPts = getPlacementPoints(pos, mode);
-                    const killPts      = getKillPoints(kills);
-                    return (
-                      <tr
-                        key={a.id}
-                        className="border-b border-gray-800/50 last:border-0 hover:bg-[#111] group transition-colors duration-150"
-                      >
-                        {/* Team */}
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-[#F2AA00]/10 flex items-center justify-center flex-shrink-0">
-                              <FontAwesomeIcon
-                                icon={pos <= 2 ? faUsers : faUser}
-                                className="text-[#F2AA00] text-[9px]"
-                              />
-                            </div>
-                            <p className="text-sm text-white group-hover:text-[#F2AA00] transition-colors duration-200">
-                              {a.teamName}
-                            </p>
-                          </div>
-                        </td>
-
-                        {/* Tournament */}
-                        <td className="px-4 py-3.5 text-sm text-gray-400 max-w-[140px] truncate">
-                          {a.tournament}
-                        </td>
-
-                        {/* Position */}
-                        <td className="px-4 py-3.5">
-                          <span
-                            className={`text-[13px] px-2.5 py-1 rounded-md border flex items-center gap-1.5 w-fit ${
-                              positionColor[pos] ?? "border-gray-700 text-gray-500"
-                            }`}
-                          >
-                            {POSITION_EMOJI[pos] ?? `#${pos}`}&nbsp;{POSITION_LABEL[pos] ?? `#${pos}`}
+        ) : (
+          <div className="space-y-3">
+            {filteredTournaments.map((t) => {
+              const allDone  = t.pendingTeams === 0 && t.approvedTeams > 0;
+              const modeCls  = MODE_COLOR[t.mode] ?? "text-gray-400 border-gray-600 bg-gray-800/40";
+              return (
+                <button key={t.id} onClick={() => selectTournament(t)}
+                  className="w-full text-left bg-[#0b0b0b] border border-gray-800 rounded-xl px-5 py-4 hover:border-[#F2AA00]/40 hover:shadow-[0_0_20px_rgba(242,170,0,0.07)] transition-all duration-200 group">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-[#F2AA00]/10 flex items-center justify-center flex-shrink-0 group-hover:bg-[#F2AA00]/20 transition-colors">
+                        <FontAwesomeIcon icon={faTrophy} className="text-[#F2AA00]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-white text-sm tracking-wide truncate">{t.title}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border tracking-widest uppercase ${modeCls}`}>
+                            {MODE_LABEL[t.mode] ?? t.mode}
                           </span>
-                        </td>
+                          {t.start_date && (
+                            <span className="text-gray-600 text-[11px]">
+                              {new Date(t.start_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
 
-                        {/* Placement pts */}
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-1.5">
-                            <FontAwesomeIcon icon={faStar} className="text-[#F2AA00]/40 text-[9px]" />
-                            <span className="text-gray-300 font-mono text-sm">+{placementPts}</span>
-                            <span className="text-gray-700 text-[10px] capitalize">{mode}</span>
-                          </div>
-                        </td>
+                    <div className="flex items-center gap-4 ml-4 flex-shrink-0">
+                      {/* Progress */}
+                      <div className="text-right hidden sm:block">
+                        <p className="text-white text-sm font-bold">{t.awardedTeams}<span className="text-gray-600 font-normal"> / {t.approvedTeams}</span></p>
+                        <p className="text-[11px] text-gray-600 tracking-widest uppercase">Awarded</p>
+                      </div>
 
-                        {/* Kill pts */}
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-1.5">
-                            <FontAwesomeIcon icon={faSkull} className="text-gray-600 text-[9px]" />
-                            <span className="text-gray-300 font-mono text-sm">+{killPts}</span>
-                            <span className="text-gray-700 text-[10px]">{kills}×5</span>
-                          </div>
-                        </td>
+                      {/* Status badge */}
+                      {allDone ? (
+                        <span className="flex items-center gap-1.5 text-[10px] text-green-400 border border-green-500/30 bg-green-500/10 px-2.5 py-1 rounded-full tracking-widest uppercase">
+                          <FontAwesomeIcon icon={faCircleCheck} /> Done
+                        </span>
+                      ) : t.pendingTeams > 0 ? (
+                        <span className="flex items-center gap-1.5 text-[10px] text-amber-400 border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 rounded-full tracking-widest uppercase">
+                          <FontAwesomeIcon icon={faHourglass} /> {t.pendingTeams} Pending
+                        </span>
+                      ) : null}
 
-                        {/* Total */}
-                        <td className="px-4 py-3.5">
-                          <span className="text-[#F2AA00] font-mono text-base font-semibold">+{a.points}</span>
-                          <span className="text-gray-600 text-[11px] ml-1">pts</span>
-                        </td>
+                      <FontAwesomeIcon icon={faChevronRight} className="text-gray-600 group-hover:text-[#F2AA00] transition-colors" />
+                    </div>
+                  </div>
 
-                        {/* When */}
-                        <td className="px-4 py-3.5 text-[13px] text-gray-500 whitespace-nowrap">
-                          {relativeTime(a.awardedAt)}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => setEditAward(a)}
-                              className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-800 text-gray-500 hover:border-[#F2AA00]/40 hover:text-[#F2AA00] transition-all duration-150"
-                              title="Edit award"
-                            >
-                              <FontAwesomeIcon icon={faPencil} className="text-[10px]" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteAward(a)}
-                              className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-800 text-gray-500 hover:border-red-500/30 hover:text-red-400 transition-all duration-150"
-                              title="Delete award"
-                            >
-                              <FontAwesomeIcon icon={faTrash} className="text-[10px]" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                  {/* Progress bar */}
+                  {t.approvedTeams > 0 && (
+                    <div className="mt-3 h-1 bg-gray-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[#F2AA00] rounded-full transition-all duration-500"
+                        style={{ width: `${(t.awardedTeams / t.approvedTeams) * 100}%` }}
+                      />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
-          <div className="px-4 py-3 border-t border-gray-800">
-            <p className="text-[10px] text-gray-700 tracking-wide">
-              Showing {awards.length} of {summary.totalAwards} awards
-            </p>
+        )}
+
+        {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // VIEW B: Teams inside a tournament
+  // ═══════════════════════════════════════════════════════
+  const modeCls = MODE_COLOR[selected.mode] ?? "text-gray-400 border-gray-600 bg-gray-800/40";
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="flex items-start gap-4 mb-6">
+        <button onClick={goBack}
+          className="mt-1 w-9 h-9 flex items-center justify-center border border-gray-700 rounded-lg text-gray-400 hover:border-[#F2AA00]/40 hover:text-[#F2AA00] transition-all flex-shrink-0">
+          <FontAwesomeIcon icon={faChevronLeft} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-[#F2AA00]/60 text-[10px] tracking-[0.4em] uppercase mb-0.5">Award Points</p>
+          <h1 className="text-white text-xl tracking-wide truncate">{selected.title}</h1>
+          <div className="flex items-center gap-2 mt-1">
+            <span className={`text-[10px] px-2 py-0.5 rounded-full border tracking-widest uppercase ${modeCls}`}>
+              {MODE_LABEL[selected.mode] ?? selected.mode}
+            </span>
+            <span className="text-gray-500 text-xs">{selected.approvedTeams} teams · {awardedCount} awarded · {pendingCount} pending</span>
           </div>
         </div>
-
+        <button onClick={() => fetchTeams(selected.id)}
+          className="flex items-center gap-2 border border-gray-700 text-gray-400 px-3 py-2 rounded-lg text-sm hover:border-gray-500 hover:text-white transition-all flex-shrink-0">
+          <FontAwesomeIcon icon={faRotateRight} className={teamsLoad ? "animate-spin" : ""} />
+        </button>
       </div>
+
+      {/* Progress bar */}
+      {selected.approvedTeams > 0 && (
+        <div className="mb-5">
+          <div className="flex justify-between text-[11px] text-gray-600 mb-1.5">
+            <span>Progress</span>
+            <span>{awardedCount} / {selected.approvedTeams} teams awarded</span>
+          </div>
+          <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-full bg-[#F2AA00] rounded-full transition-all duration-500"
+              style={{ width: teams.length > 0 ? `${(awardedCount / teams.length) * 100}%` : "0%" }} />
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+        <div className="relative flex-1">
+          <FontAwesomeIcon icon={faSearch} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600" />
+          <input value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)}
+            placeholder="Search teams…"
+            className="w-full bg-[#0b0b0b] border border-gray-800 rounded-xl pl-11 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#F2AA00]/40 transition-colors" />
+        </div>
+        <div className="flex gap-2">
+          {(["all","pending","awarded"] as const).map((f) => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`px-4 py-2 rounded-xl border text-xs tracking-widest uppercase transition-all ${
+                filter === f
+                  ? "border-[#F2AA00] bg-[#F2AA00]/10 text-[#F2AA00]"
+                  : "border-gray-800 text-gray-500 hover:border-gray-600"
+              }`}>
+              {f === "all" ? `All (${teams.length})` : f === "pending" ? `Pending (${pendingCount})` : `Awarded (${awardedCount})`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Teams */}
+      {teamsLoad ? (
+        <div className="space-y-3">
+          {[1,2,3,4].map((i) => (
+            <div key={i} className="bg-[#0b0b0b] border border-gray-800 rounded-xl h-20 animate-pulse" />
+          ))}
+        </div>
+      ) : filteredTeams.length === 0 ? (
+        <div className="text-center py-20 text-gray-600">
+          <FontAwesomeIcon icon={faUsers} className="text-4xl mb-3 block" />
+          {teamSearch ? "No teams match your search." : "No teams found."}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredTeams.map((team) => (
+            <div key={team.registrationId}
+              className={`bg-[#0b0b0b] border rounded-xl px-5 py-4 transition-all duration-200
+                ${team.awarded ? "border-green-500/20" : "border-gray-800 hover:border-[#F2AA00]/30"}`}>
+              <div className="flex items-center justify-between gap-4">
+                {/* Left: team info */}
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${team.awarded ? "bg-green-500/10" : "bg-gray-800/60"}`}>
+                    <FontAwesomeIcon icon={team.awarded ? faCircleCheck : faUsers}
+                      className={team.awarded ? "text-green-400" : "text-gray-500"} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-white text-sm tracking-wide truncate">{team.teamName}</p>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      {team.players.length > 0 && (
+                        <span className="text-gray-600 text-xs">{team.players.length} player{team.players.length !== 1 ? "s" : ""}</span>
+                      )}
+                      {team.awarded && team.award && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-[#F2AA00]">
+                            <FontAwesomeIcon icon={faTrophy} className="mr-1 text-[10px]" />
+                            {posLabel(team.award.position)}
+                          </span>
+                          <span className="text-gray-600">·</span>
+                          <span className="text-red-400">
+                            <FontAwesomeIcon icon={faSkull} className="mr-1 text-[10px]" />
+                            {team.award.kills}K
+                          </span>
+                          <span className="text-gray-600">·</span>
+                          <span className="text-[#F2AA00] font-bold">+{team.award.points} pts</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: actions */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {!team.awarded ? (
+                    <button onClick={() => setModalTeam(team)}
+                      className="flex items-center gap-2 bg-[#F2AA00] text-black px-4 py-2 rounded-lg text-xs tracking-widest font-bold hover:bg-[#e09e00] active:scale-95 transition-all">
+                      <FontAwesomeIcon icon={faPlus} />
+                      Award
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={() => setModalTeam(team)}
+                        className="w-8 h-8 flex items-center justify-center border border-gray-700 rounded-lg text-gray-500 hover:border-[#F2AA00]/40 hover:text-[#F2AA00] transition-all">
+                        <FontAwesomeIcon icon={faPen} className="text-xs" />
+                      </button>
+                      <button onClick={() => setDeleteTarget({ awardId: team.award!.id, teamName: team.teamName })}
+                        className="w-8 h-8 flex items-center justify-center border border-gray-700 rounded-lg text-gray-500 hover:border-red-500/40 hover:text-red-400 transition-all">
+                        <FontAwesomeIcon icon={faTrash} className="text-xs" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Players chips (expanded) */}
+              {team.players.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-800/60">
+                  {team.players.map((p, i) => (
+                    <span key={i} className={`text-[11px] px-2 py-0.5 rounded-md border ${p.isCaptain ? "border-[#F2AA00]/30 text-[#F2AA00]/80 bg-[#F2AA00]/5" : "border-gray-800 text-gray-600"}`}>
+                      {p.isCaptain && "★ "}{p.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Award Modal */}
+      {modalTeam && (
+        <AwardModal team={modalTeam} onClose={() => setModalTeam(null)} onSave={handleAward} />
+      )}
+
+      {/* Delete Confirm */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#0d0d0d] border border-red-500/30 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 className="text-white text-lg tracking-wide mb-2">Remove Award?</h3>
+            <p className="text-gray-400 text-sm mb-5">
+              This will delete the award for <span className="text-white">{deleteTarget.teamName}</span> and deduct points from their balance.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} className="flex-1 border border-gray-700 text-gray-400 py-2.5 rounded-xl text-sm hover:border-gray-500 transition-all">Cancel</button>
+              <button onClick={() => handleDelete(deleteTarget.awardId)} className="flex-1 bg-red-500/10 border border-red-500/40 text-red-400 py-2.5 rounded-xl text-sm hover:bg-red-500/20 transition-all">Remove</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }

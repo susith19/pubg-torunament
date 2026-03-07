@@ -166,7 +166,7 @@ function TournamentsContent() {
                         <td className="px-5 py-4 text-md text-gray-400 tracking-wide whitespace-nowrap">{t.dateLabel}</td>
 
                         {/* TIME */}
-                        <td className="px-5 py-4 text-md text-gray-400 font-mono whitespace-nowrap">{t.timeLabel}</td>
+                        <td className="px-5 py-4 text-md text-gray-400 font-mono whitespace-nowrap">{"IST " + t.timeLabel}</td>
 
                         {/* PLATFORM */}
                         <td className="px-5 py-4">

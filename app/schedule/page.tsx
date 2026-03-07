@@ -127,7 +127,7 @@ export default function SchedulePage() {
 
                       {/* TIME */}
                       <div className="text-md font-mono text-gray-500 w-14 flex-shrink-0 group-hover:text-[#F2AA00] transition-colors duration-200">
-                        {t.time}
+                        {"IST " + t.time}
                       </div>
 
                       <div className="w-px h-8 bg-gray-800 flex-shrink-0" />

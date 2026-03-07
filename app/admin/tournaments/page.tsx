@@ -65,7 +65,7 @@ const statusIcons: Record<string, any> = {
   Live:   faTrophy,
 };
 
-const MAPS     = ["Erangel", "Miramar", "Sanhok", "Vikendi", "Warehouse", "Livik"];
+const MAPS     = ["Erangel", "Miramar", "Sanhok", "Vikendi", "Rondo", "Warehouse", "Livik"];
 const MODES    = ["Solo", "Duo", "Squad"];
 const STATUSES = ["Open", "Full", "Closed", "Live"];
 
@@ -726,7 +726,7 @@ export default function AdminTournaments() {
           name:     t.title,
           map:      t.map,
           mode,
-          platform: t.game === "PUBG_PC" ? "PUBG" : "BGMI",
+          platform: t.game === "PUBG" ? "PUBG" : "BGMI",
           slots:    t.total_slots,
           // Fix: count registrations not players
           filled:   t.filled_slots ?? t._count?.registrations ?? 0,

@@ -37,7 +37,6 @@ const modeIcon: Record<string, any> = {
 const platformColor: Record<string, string> = {
   BGMI: "bg-green-500/10 text-green-400 border-green-500/20",
   PUBG: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  PUBG_PC: "bg-blue-500/10 text-blue-400 border-blue-500/20",
 };
 
 // relative time helper — handles SQLite "2026-02-26 12:08:32" format

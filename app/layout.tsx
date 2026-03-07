@@ -15,9 +15,10 @@ const pubgFont = localFont({
   variable: "--font-pubg",
 });
 
-export const metadata: Metadata = {
-  title: "Pubg App",
-  description: "Tournament App",
+export const metadata : Metadata = {
+  title: "PUBG Tournament - Play and Win",
+  description: "Join PUBG tournaments, compete with players and win rewards.",
+  keywords: "PUBG tournament, BGMI tournament, gaming tournament",
 };
 
 export default function RootLayout({

@@ -8,7 +8,9 @@ import {
   faCheck, faCloudArrowUp, faCircleExclamation,
   faUser, faHashtag, faEnvelope, faMobileScreen,
   faShield, faCopy, faQrcode, faIndianRupeeSign,
+  faStar, faCoins, faTrophy, faCrosshairs, faArrowRight,
 } from "@fortawesome/free-solid-svg-icons";
+import { getPlacementPoints, getKillPoints } from "@/lib/points";
 
 const ALL_MAPS = [
   { name: "Erangel", src: "/Erangle.jpg"  },
@@ -25,6 +27,12 @@ type PaymentConfig = {
   upiName: string;
   qrUrl:   string;
   note:    string;
+};
+
+type PreviousTeam = {
+  team_name: string;
+  team_tag:  string;
+  players:   { player_name: string; player_id: string; is_captain: boolean }[];
 };
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -65,7 +73,82 @@ function PlayerSlot({ index, value, onChange, isCaptain = false }: any) {
   );
 }
 
-// ── PAYMENT BLOCK — always rendered ─────────────────────
+// ── POINTS TABLE ──────────────────────────────────────────
+function PointsTable({ mode }: { mode: string }) {
+  const m = mode?.toLowerCase() ?? "squad";
+
+  const placements =
+    m === "solo"
+      ? [
+          { pos: "🥇 1st",    pts: getPlacementPoints(1,  m) },
+          { pos: "🥈 2nd",    pts: getPlacementPoints(2,  m) },
+          { pos: "🥉 3rd",    pts: getPlacementPoints(3,  m) },
+          { pos: "4th",        pts: getPlacementPoints(4,  m) },
+          { pos: "5th",        pts: getPlacementPoints(5,  m) },
+          { pos: "6th–10th",   pts: getPlacementPoints(6,  m) },
+          { pos: "11th–15th",  pts: getPlacementPoints(11, m) },
+          { pos: "16th–20th",  pts: getPlacementPoints(16, m) },
+        ]
+      : m === "duo"
+      ? [
+          { pos: "🥇 1st",    pts: getPlacementPoints(1,  m) },
+          { pos: "🥈 2nd",    pts: getPlacementPoints(2,  m) },
+          { pos: "🥉 3rd",    pts: getPlacementPoints(3,  m) },
+          { pos: "4th",        pts: getPlacementPoints(4,  m) },
+          { pos: "5th–10th",   pts: getPlacementPoints(5,  m) },
+          { pos: "11th–15th",  pts: getPlacementPoints(11, m) },
+        ]
+      : [
+          { pos: "🥇 1st",    pts: getPlacementPoints(1,  m) },
+          { pos: "🥈 2nd",    pts: getPlacementPoints(2,  m) },
+          { pos: "🥉 3rd",    pts: getPlacementPoints(3,  m) },
+          { pos: "4th",        pts: getPlacementPoints(4,  m) },
+          { pos: "5th",        pts: getPlacementPoints(5,  m) },
+          { pos: "6th–10th",   pts: getPlacementPoints(6,  m) },
+        ];
+
+  return (
+    <div className="bg-[#0b0b0b] border border-gray-800 rounded-xl p-4">
+      <SectionLabel>Points System</SectionLabel>
+
+      {/* Placement points */}
+      <div className="mb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <FontAwesomeIcon icon={faTrophy} className="text-[#F2AA00] text-xs" />
+          <p className="text-[11px] text-gray-500 tracking-widest uppercase">Placement Points</p>
+        </div>
+        <div className="rounded-lg overflow-hidden border border-gray-800">
+          {placements.map((row, i) => (
+            <div key={i} className={`flex items-center justify-between px-3 py-2 text-xs ${
+              i % 2 === 0 ? "bg-black/40" : "bg-black/20"
+            } ${i === 0 ? "border-b border-[#F2AA00]/20" : ""}`}>
+              <span className={`${i === 0 ? "text-[#F2AA00] font-semibold" : "text-gray-400"}`}>{row.pos}</span>
+              <span className={`font-mono font-bold ${i === 0 ? "text-[#F2AA00]" : "text-gray-300"}`}>{row.pts} pts</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Kill points */}
+      <div className="flex items-center gap-2 bg-black/40 border border-gray-800 rounded-lg px-3 py-2.5">
+        <FontAwesomeIcon icon={faCrosshairs} className="text-red-400 text-xs flex-shrink-0" />
+        <p className="text-xs text-gray-400">Each kill = <span className="text-white font-mono font-bold">{getKillPoints(1)} pts</span></p>
+      </div>
+
+      {/* Example calc */}
+      <div className="mt-3 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-3 py-2.5">
+        <p className="text-[10px] text-gray-500 mb-1 tracking-widest uppercase">Example</p>
+        <p className="text-xs text-gray-400">
+          1st place + 5 kills = <span className="text-[#F2AA00] font-mono font-bold">
+            {getPlacementPoints(1, m) + getKillPoints(5)} pts
+          </span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── PAYMENT BLOCK ────────────────────────────────────────
 function PaymentBlock({ config, fee }: { config: PaymentConfig; fee: number }) {
   const [copied, setCopied] = useState(false);
   const hasUpi = config.upiId.trim().length > 0;
@@ -81,7 +164,7 @@ function PaymentBlock({ config, fee }: { config: PaymentConfig; fee: number }) {
 
   return (
     <div className="rounded-xl border border-[#F2AA00]/25 overflow-hidden bg-black">
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-[#F2AA00]/8 border-b border-[#F2AA00]/15">
         <div className="flex items-center gap-2">
           <FontAwesomeIcon icon={faQrcode} className="text-[#F2AA00]" />
@@ -96,54 +179,33 @@ function PaymentBlock({ config, fee }: { config: PaymentConfig; fee: number }) {
       </div>
 
       <div className="p-4 space-y-4">
-
-        {/* ── QR + UPI row ── */}
         {(hasQr || hasUpi) ? (
           <div className={`flex gap-5 ${hasQr ? "flex-col sm:flex-row items-start" : "flex-col"}`}>
-
-            {/* QR image */}
             {hasQr && (
               <div className="flex-shrink-0 flex flex-col items-center">
                 <div className="w-40 h-40 bg-white rounded-xl border-2 border-[#F2AA00]/30 p-2 shadow-lg shadow-[#F2AA00]/10">
-                  <img
-                    src={config.qrUrl}
-                    alt="Payment QR Code"
-                    className="w-full h-full object-contain"
-                  />
+                  <img src={config.qrUrl} alt="Payment QR Code" className="w-full h-full object-contain" />
                 </div>
                 <p className="text-[9px] text-gray-600 tracking-[0.2em] mt-2 uppercase">Scan to Pay</p>
               </div>
             )}
-
             <div className="flex-1 w-full space-y-3">
-              {/* UPI ID copy */}
               {hasUpi && (
                 <div>
                   <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1.5">UPI ID</p>
-                  <button
-                    type="button"
-                    onClick={copyUpi}
-                    className="w-full flex items-center justify-between bg-[#0d0d0d] border border-gray-800 hover:border-[#F2AA00]/40 rounded-lg px-3 py-2.5 transition-all duration-150 group"
-                  >
+                  <button type="button" onClick={copyUpi}
+                    className="w-full flex items-center justify-between bg-[#0d0d0d] border border-gray-800 hover:border-[#F2AA00]/40 rounded-lg px-3 py-2.5 transition-all duration-150 group">
                     <span className="text-sm text-[#F2AA00] font-mono tracking-wide">{config.upiId}</span>
                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-all ${
-                      copied
-                        ? "bg-green-500/20 border-green-500/30"
-                        : "bg-gray-900 border-gray-700 group-hover:border-[#F2AA00]/40"
+                      copied ? "bg-green-500/20 border-green-500/30" : "bg-gray-900 border-gray-700 group-hover:border-[#F2AA00]/40"
                     }`}>
-                      <FontAwesomeIcon
-                        icon={copied ? faCheck : faCopy}
-                        className={`text-[10px] ${copied ? "text-green-400" : "text-gray-500 group-hover:text-[#F2AA00]"}`}
-                      />
+                      <FontAwesomeIcon icon={copied ? faCheck : faCopy}
+                        className={`text-[10px] ${copied ? "text-green-400" : "text-gray-500 group-hover:text-[#F2AA00]"}`} />
                     </div>
                   </button>
-                  {copied && (
-                    <p className="text-[10px] text-green-400 mt-1 tracking-widest">Copied ✓</p>
-                  )}
+                  {copied && <p className="text-[10px] text-green-400 mt-1 tracking-widest">Copied ✓</p>}
                 </div>
               )}
-
-              {/* Steps */}
               <div>
                 <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-2">How to pay</p>
                 <div className="space-y-2">
@@ -163,41 +225,22 @@ function PaymentBlock({ config, fee }: { config: PaymentConfig; fee: number }) {
                   ))}
                 </div>
               </div>
-
-              {/* Admin note */}
-              {config.note && (
-                <div className="flex items-start gap-2 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-3 py-2.5">
-                  <FontAwesomeIcon icon={faCircleExclamation} className="text-[#F2AA00]/70 text-xs mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-gray-400 leading-relaxed">{config.note}</p>
-                </div>
-              )}
             </div>
           </div>
         ) : (
-          /* ── No config set yet — generic instructions ── */
           <div className="space-y-3">
             <div className="flex items-start gap-2.5 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-4 py-3">
               <FontAwesomeIcon icon={faCircleExclamation} className="text-[#F2AA00]/70 text-sm mt-0.5 flex-shrink-0" />
               <p className="text-sm text-gray-400 leading-relaxed">
-                Pay <span className="text-[#F2AA00] font-mono font-bold">{feeStr}</span> via UPI to the organiser, then upload your payment screenshot and enter the Transaction ID below to confirm your slot.
+                Pay <span className="text-[#F2AA00] font-mono font-bold">{feeStr}</span> via UPI to the organiser, then upload your payment screenshot and enter the Transaction ID below.
               </p>
             </div>
-            <div className="space-y-2">
-              {[
-                "Open GPay, PhonePe, Paytm or any UPI app",
-                "Pay the entry fee to the organiser's UPI ID",
-                `Amount: ${feeStr} exactly`,
-                "Screenshot the payment success screen",
-                "Upload it below and enter the Transaction ID",
-              ].map((step, i) => (
-                <div key={i} className="flex items-start gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-[#F2AA00]/10 border border-[#F2AA00]/25 flex items-center justify-center text-[9px] text-[#F2AA00] flex-shrink-0 mt-0.5">
-                    {i + 1}
-                  </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">{step}</p>
-                </div>
-              ))}
-            </div>
+          </div>
+        )}
+        {config.note && (
+          <div className="flex items-start gap-2 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-3 py-2.5">
+            <FontAwesomeIcon icon={faCircleExclamation} className="text-[#F2AA00]/70 text-xs mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-gray-400 leading-relaxed">{config.note}</p>
           </div>
         )}
       </div>
@@ -224,6 +267,15 @@ export default function RegisterPage() {
   const [players,        setPlayers]        = useState<{ name: string; id: string }[]>([]);
   const [submitted,      setSubmitted]      = useState(false);
 
+  // ── Redeem points state ──
+  const [userPoints,     setUserPoints]     = useState<number>(0);
+  const [pointsLoaded,   setPointsLoaded]   = useState(false);
+  const [useRedeem,      setUseRedeem]      = useState(false);
+
+  // ── Previous team state ──
+  const [prevTeams,      setPrevTeams]      = useState<PreviousTeam[]>([]);
+  const [selectedTeam,   setSelectedTeam]   = useState<string>("");
+
   // AUTH GUARD
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -234,9 +286,13 @@ export default function RegisterPage() {
     }
   }, []);
 
-  // FETCH tournament + payment config
+  // FETCH tournament + payment config + user points + previous teams
   useEffect(() => {
     if (!authChecked || !id) return;
+
+    const token = localStorage.getItem("token");
+
+    // Tournament data
     fetch(`/api/tournaments/${id}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
@@ -266,7 +322,6 @@ export default function RegisterPage() {
           )?.src ?? "/miramar.jpg",
         });
 
-        // Always set — API now always returns an object (never null)
         const pc = data.paymentConfig;
         if (pc) {
           setPaymentConfig({
@@ -276,6 +331,54 @@ export default function RegisterPage() {
             note:    pc.note    ?? "",
           });
         }
+      })
+      .catch(console.error);
+
+    // User points — try /api/user/points first, fall back to /api/user/me
+    const fetchUserPoints = async () => {
+      try {
+        // Try dedicated points endpoint first
+        const r1 = await fetch("/api/user/points", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (r1.ok) {
+          const d1 = await r1.json();
+          const pts =
+            d1?.total_points ??
+            d1?.points ??
+            d1?.user?.total_points ??
+            null;
+          if (pts !== null) { setUserPoints(Number(pts)); return; }
+        }
+      } catch (_) {}
+
+      try {
+        // Fall back to /api/user/me
+        const r2 = await fetch("/api/user/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (r2.ok) {
+          const d2 = await r2.json();
+          // Try every common response shape
+          const pts =
+            d2?.user?.total_points ??
+            d2?.total_points ??
+            d2?.data?.total_points ??
+            d2?.profile?.total_points ??
+            0;
+          setUserPoints(Number(pts));
+        }
+      } catch (e) {
+        console.error("Failed to fetch user points:", e);
+      }
+    };
+    fetchUserPoints().finally(() => setPointsLoaded(true));
+
+    // Previous teams from user's past registrations
+    fetch("/api/user/teams", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => {
+        setPrevTeams(data?.teams ?? []);
       })
       .catch(console.error);
 
@@ -289,6 +392,23 @@ export default function RegisterPage() {
     );
   }, [tournament]);
 
+  // Apply selected previous team
+  const applyPreviousTeam = (teamName: string) => {
+    const found = prevTeams.find((t) => t.team_name === teamName);
+    if (!found) return;
+    setSelectedTeam(teamName);
+    setTeamName(found.team_name);
+    const cap = found.players.find((p) => p.is_captain);
+    if (cap) setCaptain({ name: cap.player_name, id: cap.player_id });
+    const others = found.players.filter((p) => !p.is_captain);
+    setPlayers(
+      others.slice(0, tournament.playerCount - 1).map((p) => ({
+        name: p.player_name,
+        id:   p.player_id,
+      }))
+    );
+  };
+
   const updatePlayer = (idx: number, field: "name" | "id", val: string) =>
     setPlayers((p) => p.map((pl, i) => (i === idx ? { ...pl, [field]: val } : pl)));
 
@@ -300,14 +420,22 @@ export default function RegisterPage() {
   const slotPercent = tournament ? Math.round((tournament.filled / tournament.slots) * 100) : 0;
   const slotsLeft   = tournament ? tournament.slots - tournament.filled : 0;
 
+
+  // Redeem: allow when user has >= entry fee points (full fee is deducted, no partial)
+  const canRedeem   = tournament !== null && userPoints >= (tournament?.fee ?? Infinity);
+  const redeemValid = useRedeem && canRedeem;
+
   const isValid =
     tournament !== null &&
     (tournament.playerCount > 1 ? teamName.trim() !== "" : true) &&
     playersValid() &&
     email.trim() !== "" &&
-    upi.trim() !== "" &&
-    txn.trim() !== "" &&
-    screenshot !== null;
+    (
+      // Redeem path: no UPI/txn/screenshot needed
+      redeemValid ||
+      // Normal payment path
+      (upi.trim() !== "" && txn.trim() !== "" && screenshot !== null)
+    );
 
   const handleSubmit = async () => {
     if (!isValid) return;
@@ -327,9 +455,13 @@ export default function RegisterPage() {
       formData.append("team_tag",
         tournament.playerCount === 1 ? "SOLO" : teamName?.slice(0, 4));
       formData.append("players",        JSON.stringify(allPlayers));
-      formData.append("upi_id",         upi);
-      formData.append("transaction_id", txn);
-      if (screenshot) formData.append("screenshot", screenshot);
+      formData.append("use_redeem",     useRedeem ? "true" : "false");
+
+      if (!useRedeem) {
+        formData.append("upi_id",         upi);
+        formData.append("transaction_id", txn);
+        if (screenshot) formData.append("screenshot", screenshot);
+      }
 
       const res  = await fetch(`/api/tournaments/${tournament.id}/register`, {
         method: "POST",
@@ -352,29 +484,72 @@ export default function RegisterPage() {
 
   if (authChecked === null) return <div className="bg-black min-h-screen" />;
 
-  // SUCCESS
+  // ── SUCCESS SCREEN ──
   if (submitted) {
     return (
       <div className="bg-black text-white min-h-screen flex items-center justify-center px-4">
-        <div className="text-center space-y-4 max-w-sm">
+        <div className="text-center space-y-4 max-w-sm w-full">
+          {/* Green tick */}
           <div className="w-16 h-16 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center mx-auto">
             <FontAwesomeIcon icon={faCheck} className="text-green-400 text-2xl" />
           </div>
-          <h2 className="text-xl tracking-wide">Registration Submitted</h2>
+          <h2 className="text-xl tracking-wide">Registration Submitted!</h2>
           <p className="text-gray-500 text-sm leading-relaxed">
-            Your payment is under review. Admin will verify and confirm your slot for{" "}
-            <span className="text-[#F2AA00]">{tournament?.name}</span>.
+            {useRedeem
+              ? <>Your entry fee was paid using <span className="text-[#F2AA00] font-mono font-bold">{tournament?.fee} points</span>. Admin will confirm your slot for <span className="text-[#F2AA00]">{tournament?.name}</span>.</>
+              : <>Your payment is under review. Admin will verify and confirm your slot for <span className="text-[#F2AA00]">{tournament?.name}</span>.</>
+            }
           </p>
-          <p className="text-[10px] text-gray-700 tracking-widest uppercase">Txn ID: {txn}</p>
-          <div className="flex gap-3 justify-center mt-4">
-            <button onClick={() => router.push("/tournaments")}
-              className="border border-[#F2AA00]/50 text-[#F2AA00] px-5 py-2 text-xs tracking-widest rounded-lg hover:bg-[#F2AA00] hover:text-black transition-all">
-              Browse Tournaments
+          {!useRedeem && (
+            <p className="text-[10px] text-gray-700 tracking-widest uppercase">Txn ID: {txn}</p>
+          )}
+
+          {/* ── HIGHLIGHTED ANNOUNCEMENT ── */}
+          <div className="mt-2 rounded-xl border border-[#F2AA00]/40 bg-[#F2AA00]/8 px-4 py-4 text-left space-y-2.5 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-[#F2AA00]/60 to-transparent" />
+            <div className="flex items-center gap-2 mb-1">
+              <FontAwesomeIcon icon={faStar} className="text-[#F2AA00] text-xs" />
+              <p className="text-[11px] text-[#F2AA00] tracking-[0.2em] uppercase font-semibold">What's Next?</p>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <div className="w-5 h-5 rounded-full bg-[#F2AA00]/20 border border-[#F2AA00]/40 flex items-center justify-center text-[9px] text-[#F2AA00] flex-shrink-0 mt-0.5">1</div>
+              <p className="text-xs text-gray-300 leading-relaxed">
+                Visit <span className="text-white font-semibold">My Profile → My Matches</span> to check your registration status.
+              </p>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <div className="w-5 h-5 rounded-full bg-[#F2AA00]/20 border border-[#F2AA00]/40 flex items-center justify-center text-[9px] text-[#F2AA00] flex-shrink-0 mt-0.5">2</div>
+              <p className="text-xs text-gray-300 leading-relaxed">
+                Once admin <span className="text-white font-semibold">approves your payment</span>, your slot will be confirmed.
+              </p>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <div className="w-5 h-5 rounded-full bg-[#F2AA00]/20 border border-[#F2AA00]/40 flex items-center justify-center text-[9px] text-[#F2AA00] flex-shrink-0 mt-0.5">3</div>
+              <p className="text-xs text-gray-300 leading-relaxed">
+                The <span className="text-white font-semibold">Room ID & Password</span> will appear in My Matches before the tournament starts.
+              </p>
+            </div>
+          </div>
+
+          {/* CTA buttons */}
+          <div className="flex flex-col gap-3 mt-4">
+            <button
+              onClick={() => router.push("/profile/matches")}
+              className="w-full flex items-center justify-center gap-2 bg-[#F2AA00] text-black py-3 rounded-xl text-sm tracking-widest font-semibold hover:bg-[#e09e00] transition-all"
+            >
+              <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
+              Check My Matches
             </button>
-            <button onClick={() => setSubmitted(false)}
-              className="border border-gray-800 text-gray-400 px-5 py-2 text-xs tracking-widest rounded-lg hover:border-gray-700 hover:text-white transition-all">
-              Register Another
-            </button>
+            <div className="flex gap-3">
+              <button onClick={() => router.push("/tournaments")}
+                className="flex-1 border border-[#F2AA00]/50 text-[#F2AA00] py-2.5 text-xs tracking-widest rounded-xl hover:bg-[#F2AA00] hover:text-black transition-all">
+                Browse Tournaments
+              </button>
+              <button onClick={() => setSubmitted(false)}
+                className="flex-1 border border-gray-800 text-gray-400 py-2.5 text-xs tracking-widest rounded-xl hover:border-gray-700 hover:text-white transition-all">
+                Register Another
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -412,6 +587,30 @@ export default function RegisterPage() {
             className={`lg:col-span-2 space-y-5 transition-all duration-500 ${visible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-6"}`}
             style={{ transitionDelay: "160ms" }}
           >
+            {/* PREVIOUS TEAM QUICK-FILL */}
+            {prevTeams.length > 0 && tournament.playerCount > 1 && (
+              <div className="bg-[#0b0b0b] border border-gray-800 rounded-xl p-5">
+                <SectionLabel>Quick Fill — Previous Teams</SectionLabel>
+                <p className="text-xs text-gray-500 mb-3">Select a team you registered with before to auto-fill player details.</p>
+                <div className="flex flex-wrap gap-2">
+                  {prevTeams.map((t) => (
+                    <button
+                      key={t.team_name}
+                      type="button"
+                      onClick={() => applyPreviousTeam(t.team_name)}
+                      className={`px-3 py-1.5 rounded-lg text-xs tracking-wide border transition-all ${
+                        selectedTeam === t.team_name
+                          ? "bg-[#F2AA00] text-black border-[#F2AA00] font-semibold"
+                          : "border-gray-700 text-gray-300 hover:border-[#F2AA00]/50 hover:text-white bg-black/40"
+                      }`}
+                    >
+                      {t.team_name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* TEAM NAME */}
             {tournament.playerCount > 1 && (
               <div className="bg-[#0b0b0b] border border-gray-800 rounded-xl p-5">
@@ -461,62 +660,153 @@ export default function RegisterPage() {
                 <p className="text-2xl text-[#F2AA00] font-mono">₹{tournament.fee}</p>
               </div>
 
-              {/* ── PAYMENT BLOCK — always rendered ── */}
-              <div className="mb-5">
-                <PaymentBlock config={paymentConfig} fee={tournament.fee} />
-              </div>
+              {/* ── REDEEM POINTS OPTION ── */}
+              <div className={`mb-4 rounded-xl border transition-all duration-200 overflow-hidden ${
+                useRedeem
+                  ? "border-[#F2AA00]/40 bg-[#F2AA00]/5"
+                  : canRedeem
+                  ? "border-[#F2AA00]/20 bg-black/40"
+                  : "border-gray-800 bg-black/20"
+              }`}>
+                <div className="flex items-center justify-between px-4 py-3.5">
+                  <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                    <FontAwesomeIcon
+                      icon={faCoins}
+                      className={`text-sm flex-shrink-0 ${canRedeem ? "text-[#F2AA00]" : "text-gray-600"}`}
+                    />
+                    <div className="min-w-0">
+                      <p className={`text-xs tracking-wide ${canRedeem ? "text-white" : "text-gray-500"}`}>
+                        Pay with Points
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-[14px] text-gray-500">
+                          Balance:{" "}
+                          {!pointsLoaded ? (
+                            <span className="font-mono text-gray-600 animate-pulse">loading...</span>
+                          ) : (
+                            <span className={`font-mono ${canRedeem ? "text-[#F2AA00]" : "text-gray-400"}`}>
+                              {userPoints} pts
+                            </span>
+                          )}
+                        </span>
+                        {canRedeem ? (
+                          <span className="text-[14px] text-green-400 font-medium">
+                            ✓ Enough to cover ₹{tournament.fee}
+                          </span>
+                        ) : (
+                          <span className="text-[14px] text-red-400/80">
+                            Need {Math.max(0, tournament.fee - userPoints)} more pts to use this
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
-              {/* User's own UPI */}
-              <div className="mb-3">
-                <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1.5">Your UPI ID</p>
-                <div className="relative">
-                  <FontAwesomeIcon icon={faMobileScreen} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600 text-xs pointer-events-none" />
-                  <input
-                    placeholder="yourname@upi  (used for refund if needed)"
-                    value={upi}
-                    onChange={(e) => setUpi(e.target.value)}
-                    className={inputCls + " pl-9 font-mono text-sm"}
-                  />
+                  {/* Toggle — always visible, disabled when can't redeem */}
+                  <button
+                    type="button"
+                    disabled={!canRedeem}
+                    onClick={() => canRedeem && setUseRedeem((v) => !v)}
+                    title={canRedeem ? "Toggle redeem" : `Need ${tournament.fee} pts to redeem`}
+                    className={`relative w-11 h-6 rounded-full transition-all duration-200 flex-shrink-0 ml-3 ${
+                      !canRedeem
+                        ? "bg-gray-800 cursor-not-allowed opacity-50"
+                        : useRedeem
+                        ? "bg-[#F2AA00] cursor-pointer"
+                        : "bg-gray-700 cursor-pointer hover:bg-gray-600"
+                    }`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${
+                      useRedeem ? "left-6" : "left-1"
+                    }`} />
+                  </button>
                 </div>
-              </div>
 
-              {/* Screenshot */}
-              <div className="mb-3">
-                <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1.5">Payment Screenshot</p>
-                <label className="block cursor-pointer">
-                  <div className={`border-2 border-dashed rounded-xl p-5 text-center transition-all duration-300 ${
-                    screenshot
-                      ? "border-green-500/40 bg-green-500/5"
-                      : "border-gray-800 hover:border-[#F2AA00]/30 hover:bg-[#F2AA00]/[0.02]"
-                  }`}>
-                    {screenshot ? (
-                      <div className="flex items-center justify-center gap-2 text-green-400">
-                        <FontAwesomeIcon icon={faCheck} className="text-sm" />
-                        <span className="text-xs tracking-wide">{screenshot.name}</span>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2">
-                        <FontAwesomeIcon icon={faCloudArrowUp} className="text-gray-600 text-xl" />
-                        <p className="text-xs text-gray-500 tracking-wide">Upload payment screenshot</p>
-                        <p className="text-[10px] text-gray-700">PNG, JPG — max 5 MB</p>
-                      </div>
+                {/* Active redeem info */}
+                {useRedeem && canRedeem && (
+                  <div className="px-4 pb-3 border-t border-[#F2AA00]/20 pt-3 space-y-1.5">
+                    <p className="text-[11px] text-[#F2AA00] leading-relaxed">
+                      <FontAwesomeIcon icon={faCircleExclamation} className="mr-1.5" />
+                      <strong>{tournament.fee} pts</strong> will be deducted from your wallet. No UPI payment needed.
+                    </p>
+                    {userPoints > tournament.fee && (
+                      <p className="text-[10px] text-gray-500">
+                        Only {tournament.fee} pts will be used — remaining {userPoints - tournament.fee} pts stay in your wallet.
+                      </p>
                     )}
                   </div>
-                  <input type="file" className="hidden" accept="image/*"
-                    onChange={(e) => setScreenshot(e.target.files?.[0] ?? null)} />
-                </label>
+                )}
+
+                {/* Rule note — only shown when disabled */}
+                {!canRedeem && (
+                  <div className="px-4 pb-3 border-t border-gray-800/50 pt-2">
+                    <p className="text-[10px] text-gray-700">
+                      You need at least <span className="text-gray-500 font-mono">{tournament.fee} pts</span> to pay with points. Partial redemption is not allowed.
+                    </p>
+                  </div>
+                )}
               </div>
 
-              {/* Transaction ID */}
-              <div>
-                <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1.5">Transaction ID</p>
-                <div className="relative">
-                  <FontAwesomeIcon icon={faHashtag} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600 text-xs pointer-events-none" />
-                  <input placeholder="e.g. T2503051234567890" value={txn}
-                    onChange={(e) => setTxn(e.target.value)}
-                    className={inputCls + " pl-9 font-mono text-sm"} />
-                </div>
-              </div>
+              {/* UPI Payment section — hidden when redeeming */}
+              {!useRedeem && (
+                <>
+                  <div className="mb-5">
+                    <PaymentBlock config={paymentConfig} fee={tournament.fee} />
+                  </div>
+
+                  {/* User's own UPI */}
+                  <div className="mb-3">
+                    <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1.5">Your UPI ID</p>
+                    <div className="relative">
+                      <FontAwesomeIcon icon={faMobileScreen} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600 text-xs pointer-events-none" />
+                      <input
+                        placeholder="yourname@upi  (used for refund if needed)"
+                        value={upi}
+                        onChange={(e) => setUpi(e.target.value)}
+                        className={inputCls + " pl-9 font-mono text-sm"}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Screenshot */}
+                  <div className="mb-3">
+                    <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1.5">Payment Screenshot</p>
+                    <label className="block cursor-pointer">
+                      <div className={`border-2 border-dashed rounded-xl p-5 text-center transition-all duration-300 ${
+                        screenshot
+                          ? "border-green-500/40 bg-green-500/5"
+                          : "border-gray-800 hover:border-[#F2AA00]/30 hover:bg-[#F2AA00]/[0.02]"
+                      }`}>
+                        {screenshot ? (
+                          <div className="flex items-center justify-center gap-2 text-green-400">
+                            <FontAwesomeIcon icon={faCheck} className="text-sm" />
+                            <span className="text-xs tracking-wide">{screenshot.name}</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2">
+                            <FontAwesomeIcon icon={faCloudArrowUp} className="text-gray-600 text-xl" />
+                            <p className="text-xs text-gray-500 tracking-wide">Upload payment screenshot</p>
+                            <p className="text-[10px] text-gray-700">PNG, JPG — max 5 MB</p>
+                          </div>
+                        )}
+                      </div>
+                      <input type="file" className="hidden" accept="image/*"
+                        onChange={(e) => setScreenshot(e.target.files?.[0] ?? null)} />
+                    </label>
+                  </div>
+
+                  {/* Transaction ID */}
+                  <div>
+                    <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1.5">Transaction ID</p>
+                    <div className="relative">
+                      <FontAwesomeIcon icon={faHashtag} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600 text-xs pointer-events-none" />
+                      <input placeholder="e.g. T2503051234567890" value={txn}
+                        onChange={(e) => setTxn(e.target.value)}
+                        className={inputCls + " pl-9 font-mono text-sm"} />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* SUBMIT */}
@@ -529,7 +819,11 @@ export default function RegisterPage() {
                   : "bg-[#0b0b0b] text-gray-600 border border-gray-800 cursor-not-allowed"
               }`}
             >
-              {isValid ? "Submit Registration" : "Complete all fields to register"}
+              {isValid
+                ? useRedeem
+                  ? `Register & Redeem ${tournament.fee} Points`
+                  : "Submit Registration"
+                : "Complete all fields to register"}
             </button>
           </div>
 
@@ -578,6 +872,9 @@ export default function RegisterPage() {
                 </div>
               </div>
             </div>
+
+            {/* Points Table */}
+            <PointsTable mode={tournament.mode?.toLowerCase() ?? "squad"} />
 
             {/* Map pool */}
             <div className="bg-[#0b0b0b] border border-gray-800 rounded-xl p-4">

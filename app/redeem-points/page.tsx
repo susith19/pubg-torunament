@@ -243,7 +243,7 @@ export default function PointsPage() {
     }
   };
 
-  const available = pts.total - (pts.redeemed ?? 0);
+  const available = pts.total;
 
   // ── GUARD: still checking or redirecting ──────────────────
   if (authChecked === null) return <div className="bg-black min-h-screen" />;

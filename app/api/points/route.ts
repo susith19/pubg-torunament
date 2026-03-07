@@ -1,167 +1,160 @@
+// app/api/points/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/requireAuth";
+
+function badge(pos: number): string {
+  if (pos === 1) return "gold";
+  if (pos === 2) return "silver";
+  if (pos === 3) return "bronze";
+  return "default";
+}
+
+function fmtDate(date: Date): string {
+  if (!date) return "—";
+  return date.toLocaleDateString("en-IN", {
+    day: "numeric", month: "short", year: "numeric",
+  });
+}
 
 export async function GET(req: NextRequest) {
   const { user, error } = await requireAuth(req);
   if (error) return error;
 
   try {
-    // ── TOTALS ────────────────────────────────────────────────
-    const winPtsAgg = await prisma.point.aggregate({
-      _sum: { points: true },
-      where: {
-        user_id: Number(user.id),
-        type: "match_win",
-      },
+    const userId = Number(user.id);
+
+    // ── 1. Use User.total_points as the SINGLE source of truth ──
+    // This is always kept in sync by every transaction that touches points.
+    const userData = await prisma.user.findUnique({
+      where:  { id: userId },
+      select: { total_points: true, referral_code: true },
     });
 
-    const referralPtsAgg = await prisma.point.aggregate({
-      _sum: { points: true },
-      where: {
-        user_id: Number(user.id),
-        type: "referral",
-      },
+    const totalPoints = userData?.total_points ?? 0;
+
+    // ── 2. Breakdown by type (for the cards + progress bars) ──
+    const breakdown = await prisma.point.groupBy({
+      by:    ["type"],
+      where: { user_id: userId },
+      _sum:  { points: true },
     });
 
-    const redeemedPtsAgg = await prisma.redeem.aggregate({
-      _sum: { amount: true },
-      where: {
-        user_id: Number(user.id),
-        status: "approved",
-      },
+    const byType: Record<string, number> = {};
+    for (const row of breakdown) {
+      byType[row.type] = row._sum.points ?? 0;
+    }
+
+    // Positive earning buckets
+    const winningPts  = byType["match_win"]  ?? 0;
+    const referralPts = byType["referral"]   ?? 0;
+    const bonusPts    = byType["bonus"]       ?? 0;
+
+    // Total redeemed (cash withdrawals only — approved in Redeem table)
+    const redeemedAgg = await prisma.redeem.aggregate({
+      _sum:  { amount: true },
+      where: { user_id: userId, status: "approved" },
     });
+    const redeemedPts = redeemedAgg._sum.amount ?? 0;
 
-    const winningPts = winPtsAgg._sum.points || 0;
-    const referralPts = referralPtsAgg._sum.points || 0;
-    const redeemedPts = redeemedPtsAgg._sum.amount || 0;
-
-    // ── WINNING HISTORY ───────────────────────────────────────
+    // ── 3. Winning history ─────────────────────────────────────
     const winningHistoryRaw = await prisma.point.findMany({
-      where: {
-        user_id: Number(user.id),
-        type: "match_win",
-      },
+      where:   { user_id: userId, type: "match_win" },
+      orderBy: { created_at: "desc" },
+      take:    30,
       select: {
-        id: true,
-        points: true,
-        created_at: true,
-        registration_id: true,
+        id: true, points: true, created_at: true, position: true, note: true,
         registration: {
           select: {
             team_name: true,
-            tournament: {
-              select: {
-                title: true,
-              },
-            },
+            tournament: { select: { title: true } },
           },
         },
       },
-      orderBy: { created_at: "desc" },
-      take: 20,
     });
 
     const winningHistory = winningHistoryRaw.map((w) => ({
-      id: w.id,
-      points: w.points,
-      date: w.created_at,
-      teamName: w.registration?.team_name ?? "—",
-      tournament: w.registration?.tournament?.title ?? "—",
-      position: 1, // Default position; adjust based on your business logic
+      id:         w.id,
+      points:     w.points,
+      date:       fmtDate(w.created_at),
+      position:   w.position ?? 1,
+      badge:      badge(w.position ?? 1),
+      teamName:   w.registration?.team_name  ?? "—",
+      tournament: w.registration?.tournament?.title ?? w.note ?? "Tournament",
     }));
 
-    // ── REFERRAL HISTORY ──────────────────────────────────────
+    // ── 4. Referral history ────────────────────────────────────
     const referralHistoryRaw = await prisma.point.findMany({
-      where: {
-        user_id: Number(user.id),
-        type: "referral",
-      },
-      select: {
-        id: true,
-        points: true,
-        created_at: true,
-        registration_id: true,
-      },
+      where:   { user_id: userId, type: "referral" },
       orderBy: { created_at: "desc" },
-      take: 20,
+      take:    30,
+      select: {
+        id: true, points: true, created_at: true, reference_id: true,
+      },
     });
+
+    // Try to resolve the referred user's name for display
+    const refUserIds = referralHistoryRaw
+      .map((r) => r.reference_id)
+      .filter(Boolean) as number[];
+
+    const refUsers = refUserIds.length > 0
+      ? await prisma.user.findMany({
+          where:  { id: { in: refUserIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+
+    const refUserMap: Record<number, string> = {};
+    for (const u of refUsers) refUserMap[u.id] = u.name ?? "User";
 
     const referralHistory = referralHistoryRaw.map((r) => ({
-      id: r.id,
-      earned: r.points,
-      date: r.created_at,
+      id:       r.id,
+      earned:   r.points,
+      date:     fmtDate(r.created_at),
+      userName: r.reference_id ? (refUserMap[r.reference_id] ?? "User") : "User",
     }));
 
-    // ── REDEEM HISTORY ────────────────────────────────────────
+    // ── 5. Redeem history ──────────────────────────────────────
     const redeemHistoryRaw = await prisma.redeem.findMany({
-      where: { user_id: Number(user.id) },
+      where:   { user_id: userId },
       orderBy: { created_at: "desc" },
-      take: 20,
+      take:    30,
     });
 
-    const redeemHistory = redeemHistoryRaw.map((r) => ({
-      id: r.id,
-      amount: r.amount,
-      detail: r.upi_id, // ✅ correct mapping
-      status: r.status,
-      date: r.created_at,
-    }));
-
-    // ── REFERRAL CODE ─────────────────────────────────────────
-    const userRecord = await prisma.user.findUnique({
-      where: { id: Number(user.id) },
-      select: { referral_code: true },
+    const redeemHistory = redeemHistoryRaw.map((r) => {
+      // Parse stored "METHOD::detail" format
+      const raw = r.upi_id ?? "";
+      const [method, ...rest] = raw.includes("::") ? raw.split("::") : ["UPI", raw];
+      return {
+        id:     r.id,
+        amount: r.amount,
+        method: method ?? "UPI",
+        detail: rest.join("::") || raw,
+        status: r.status,
+        date:   fmtDate(r.created_at),
+      };
     });
 
-    // ── HELPERS ───────────────────────────────────────────────
-    function badge(pos: number): string {
-      return pos === 1
-        ? "gold"
-        : pos === 2
-          ? "silver"
-          : pos === 3
-            ? "bronze"
-            : "default";
-    }
-
-    function fmtDate(date: Date): string {
-      if (!date) return "—";
-      return date.toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-    }
-
+    // ── 6. Return ──────────────────────────────────────────────
     return NextResponse.json({
       success: true,
       points: {
-        total: winningPts + referralPts,
-        winning: winningPts,
+        total:    totalPoints,   // ← from User.total_points, always correct
+        winning:  winningPts,
         referral: referralPts,
-        redeemed: redeemedPts,
+        bonus:    bonusPts,
+        redeemed: redeemedPts,   // approved cash redeems only
       },
-      referralCode: userRecord?.referral_code ?? null,
-      winningHistory: winningHistory.map((w) => ({
-        ...w,
-        badge: badge(w.position),
-        date: fmtDate(w.date),
-      })),
-      referralHistory: referralHistory.map((r) => ({
-        ...r,
-        date: fmtDate(r.date),
-      })),
-      redeemHistory: redeemHistory.map((r) => ({
-        ...r,
-        date: fmtDate(r.date),
-      })),
+      referralCode:   userData?.referral_code ?? null,
+      winningHistory,
+      referralHistory,
+      redeemHistory,
     });
+
   } catch (err) {
     console.error(err);
-    return NextResponse.json(
-      { error: "Failed to fetch rewards" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch rewards" }, { status: 500 });
   }
 }

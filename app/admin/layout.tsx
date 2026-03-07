@@ -17,25 +17,19 @@ import {
   faRightFromBracket,
   faShieldHalved,
   faBuildingColumns,
+  faMoneyBillTransfer,
 } from "@fortawesome/free-solid-svg-icons";
 
 const navItems = [
-  { label: "Dashboard", href: "/admin", icon: faGaugeHigh },
-  { label: "Tournaments", href: "/admin/tournaments", icon: faTrophy },
-  {
-    label: "Social Media Live",
-    href: "/admin/social-media",
-    icon: faShieldHalved,
-  },
-  { label: "Teams", href: "/admin/teams", icon: faUsers },
-  { label: "Points", href: "/admin/points/winning", icon: faCoins },
-  { label: "Users", href: "/admin/users", icon: faUser },
-  { label: "Payments", href: "/admin/payment", icon: faCreditCard },
-  {
-    label: "Account Details",
-    href: "/admin/payment-config",
-    icon: faBuildingColumns,
-  },
+  { label: "Dashboard",       href: "/admin",                icon: faGaugeHigh       },
+  { label: "Tournaments",     href: "/admin/tournaments",    icon: faTrophy          },
+  { label: "Social Media Live",href: "/admin/social-media", icon: faShieldHalved    },
+  { label: "Teams",           href: "/admin/teams",          icon: faUsers           },
+  { label: "Points",          href: "/admin/points/winning", icon: faCoins           },
+  { label: "Users",           href: "/admin/users",          icon: faUser            },
+  { label: "Payments",        href: "/admin/payment",        icon: faCreditCard      },
+  { label: "Redeems",         href: "/admin/redeems",        icon: faMoneyBillTransfer },
+  { label: "Account Details", href: "/admin/payment-config", icon: faBuildingColumns },
 ];
 
 export default function AdminLayout({
