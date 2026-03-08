@@ -19,6 +19,9 @@ export const metadata : Metadata = {
   title: "PUBG Tournament - Play and Win",
   description: "Join PUBG tournaments, compete with players and win rewards.",
   keywords: "PUBG tournament, BGMI tournament, gaming tournament",
+  icons: {
+    icon: "/logo.svg",
+  },
 };
 
 export default function RootLayout({
