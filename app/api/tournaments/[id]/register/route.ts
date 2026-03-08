@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/requireAuth";
 import { prisma } from "@/lib/prisma";
-import fs from "fs";
-import path from "path";
+import { uploadPaymentScreenshot } from "@/lib/cloudinary";   // ← new helper
 
 export async function POST(
   req: NextRequest,
@@ -17,27 +16,17 @@ export async function POST(
 
     const formData = await req.formData();
 
-    // 🎮 TEAM
     const team_name = formData.get("team_name") as string;
     const team_tag  = formData.get("team_tag")  as string;
-
-    // 👥 PLAYERS (JSON string)
-    const players = JSON.parse(formData.get("players") as string);
-
-    // 🪙 REDEEM FLAG
+    const players   = JSON.parse(formData.get("players") as string);
     const use_redeem = formData.get("use_redeem") === "true";
 
-    // 💰 PAYMENT (only required if NOT redeeming)
-    const upi_id        = formData.get("upi_id")        as string | null;
+    const upi_id         = formData.get("upi_id")         as string | null;
     const transaction_id = formData.get("transaction_id") as string | null;
-    const file           = formData.get("screenshot")    as File   | null;
+    const file           = formData.get("screenshot")     as File   | null;
 
-    // ❌ VALIDATIONS
     if (!team_name || !players || players.length < 1) {
-      return NextResponse.json(
-        { error: "Team & players required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Team & players required" }, { status: 400 });
     }
 
     const captain = players.find((p: any) => p.is_captain);
@@ -45,59 +34,39 @@ export async function POST(
       return NextResponse.json({ error: "Captain required" }, { status: 400 });
     }
 
-    // 🔍 Tournament check
-    const tournament = await prisma.tournament.findUnique({
-      where: { id: tournamentId },
-    });
-
+    const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
     }
-
-    const totalSlots = tournament.total_slots ?? 0;
-    if (tournament.filled_slots >= totalSlots) {
+    if (tournament.filled_slots >= (tournament.total_slots ?? 0)) {
       return NextResponse.json({ error: "Slots full" }, { status: 400 });
     }
 
-    // ❌ Duplicate join
     const exists = await prisma.registration.findFirst({
-      where: {
-        user_id:       Number(user.id),
-        tournament_id: tournamentId,
-      },
+      where: { user_id: Number(user.id), tournament_id: tournamentId },
     });
-
     if (exists) {
       return NextResponse.json({ error: "Already joined" }, { status: 400 });
     }
 
     const entryFee = tournament.entry_fee ?? 0;
 
-    // ─────────────────────────────────────────────────────────
-    // 🪙 REDEEM PATH
-    // ─────────────────────────────────────────────────────────
+    // ── REDEEM PATH ──────────────────────────────────────────
     if (use_redeem) {
-      // Fetch current user points
       const userData = await prisma.user.findUnique({
-        where: { id: Number(user.id) },
+        where:  { id: Number(user.id) },
         select: { total_points: true },
       });
-
       const userPoints = userData?.total_points ?? 0;
 
-      // ❌ STRICT RULE: points must be >= entry fee (no partial)
       if (userPoints < entryFee) {
         return NextResponse.json(
-          {
-            error: `Insufficient points. You have ${userPoints} pts but need ${entryFee} pts.`,
-          },
+          { error: `Insufficient points. You have ${userPoints} pts but need ${entryFee} pts.` },
           { status: 400 },
         );
       }
 
-      // ✅ CREATE REGISTRATION with point deduction in transaction
       const result = await prisma.$transaction(async (tx) => {
-        // Create registration
         const reg = await tx.registration.create({
           data: {
             user_id:           Number(user.id),
@@ -110,7 +79,6 @@ export async function POST(
           },
         });
 
-        // Create players
         await tx.player.createMany({
           data: players.map((p: any) => ({
             registration_id: reg.id,
@@ -120,32 +88,28 @@ export async function POST(
           })),
         });
 
-        // Create payment record with method = "REDEEM"
         const payment = await tx.payment.create({
           data: {
-            user_id:       Number(user.id),
-            tournament_id: tournamentId,
-            amount:        entryFee,
-            method:        "REDEEM",        // ← signals admin dashboard it's points-based
+            user_id:        Number(user.id),
+            tournament_id:  tournamentId,
+            amount:         entryFee,
+            method:         "REDEEM",
             transaction_id: `REDEEM-${Date.now()}`,
             screenshot_url: null,
-            status:        "pending",       // admin still must approve
+            status:         "pending",
           },
         });
 
-        // Link payment to registration
         const updatedReg = await tx.registration.update({
           where: { id: reg.id },
           data:  { payment_id: payment.id },
         });
 
-        // Deduct points from user wallet (exactly entryFee)
         await tx.user.update({
           where: { id: Number(user.id) },
           data:  { total_points: { decrement: entryFee } },
         });
 
-        // Record point transaction (negative)
         await tx.point.create({
           data: {
             user_id:         Number(user.id),
@@ -156,7 +120,6 @@ export async function POST(
           },
         });
 
-        // Update tournament filled slots
         await tx.tournament.update({
           where: { id: tournamentId },
           data:  { filled_slots: { increment: 1 } },
@@ -174,30 +137,18 @@ export async function POST(
       });
     }
 
-    // ─────────────────────────────────────────────────────────
-    // 💳 NORMAL UPI PAYMENT PATH
-    // ─────────────────────────────────────────────────────────
-
+    // ── UPI PAYMENT PATH ─────────────────────────────────────
     if (!upi_id || !transaction_id || !file) {
       return NextResponse.json(
-        { error: "UPI ID, Transaction ID and screenshot are required for payment" },
+        { error: "UPI ID, Transaction ID and screenshot are required" },
         { status: 400 },
       );
     }
 
-    // ✅ SAVE IMAGE
-    const bytes  = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    // ✅ Upload screenshot to Cloudinary (works on Vercel — no disk write)
+    const fileUrl = await uploadPaymentScreenshot(file);
 
-    const fileName  = `${Date.now()}-${file.name}`;
-    const uploadPath = path.join(process.cwd(), "public/uploads/payments", fileName);
-
-    fs.writeFileSync(uploadPath, buffer);
-    const fileUrl = `/uploads/payments/${fileName}`;
-
-    // ✅ CREATE REGISTRATION with PLAYERS in transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Create registration
       const reg = await tx.registration.create({
         data: {
           user_id:           Number(user.id),
@@ -210,7 +161,6 @@ export async function POST(
         },
       });
 
-      // Create players
       await tx.player.createMany({
         data: players.map((p: any) => ({
           registration_id: reg.id,
@@ -220,26 +170,23 @@ export async function POST(
         })),
       });
 
-      // Create payment
       const payment = await tx.payment.create({
         data: {
-          user_id:       Number(user.id),
-          tournament_id: tournamentId,
-          amount:        entryFee,
-          method:        "UPI",
+          user_id:        Number(user.id),
+          tournament_id:  tournamentId,
+          amount:         entryFee,
+          method:         "UPI",
           transaction_id,
-          screenshot_url: fileUrl,
-          status:        "pending",
+          screenshot_url: fileUrl,   // ← Cloudinary https:// URL
+          status:         "pending",
         },
       });
 
-      // Link payment to registration
       const updatedReg = await tx.registration.update({
         where: { id: reg.id },
         data:  { payment_id: payment.id },
       });
 
-      // Update tournament filled slots
       await tx.tournament.update({
         where: { id: tournamentId },
         data:  { filled_slots: { increment: 1 } },
