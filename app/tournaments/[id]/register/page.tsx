@@ -414,7 +414,13 @@ export default function RegisterPage() {
 
   const playersValid = () => {
     if (!captain.name || !captain.id) return false;
-    return players.every((p) => p.name && p.id);
+    // if a player fills either field, both must be filled
+    return players.every((p) => {
+      const hasName = p.name.trim() !== "";
+      const hasId   = p.id.trim()   !== "";
+      if (hasName || hasId) return hasName && hasId; // partial = invalid
+      return true; // completely empty = fine
+    });
   };
 
   const slotPercent = tournament ? Math.round((tournament.filled / tournament.slots) * 100) : 0;
@@ -509,24 +515,24 @@ export default function RegisterPage() {
             <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-[#F2AA00]/60 to-transparent" />
             <div className="flex items-center gap-2 mb-1">
               <FontAwesomeIcon icon={faStar} className="text-[#F2AA00] text-xs" />
-              <p className="text-[11px] text-[#F2AA00] tracking-[0.2em] uppercase font-semibold">What's Next?</p>
+              <p className="text-[11px] text-[#F2AA00] tracking-[0.2em] uppercase ">What's Next?</p>
             </div>
             <div className="flex items-start gap-2.5">
               <div className="w-5 h-5 rounded-full bg-[#F2AA00]/20 border border-[#F2AA00]/40 flex items-center justify-center text-[9px] text-[#F2AA00] flex-shrink-0 mt-0.5">1</div>
               <p className="text-xs text-gray-300 leading-relaxed">
-                Visit <span className="text-white font-semibold">My Profile → My Matches</span> to check your registration status.
+                Visit <span className="text-white ">My Profile → My Matches</span> to check your registration status.
               </p>
             </div>
             <div className="flex items-start gap-2.5">
               <div className="w-5 h-5 rounded-full bg-[#F2AA00]/20 border border-[#F2AA00]/40 flex items-center justify-center text-[9px] text-[#F2AA00] flex-shrink-0 mt-0.5">2</div>
               <p className="text-xs text-gray-300 leading-relaxed">
-                Once admin <span className="text-white font-semibold">approves your payment</span>, your slot will be confirmed.
+                Once admin <span className="text-white">approves your payment</span>, your slot will be confirmed.
               </p>
             </div>
             <div className="flex items-start gap-2.5">
               <div className="w-5 h-5 rounded-full bg-[#F2AA00]/20 border border-[#F2AA00]/40 flex items-center justify-center text-[9px] text-[#F2AA00] flex-shrink-0 mt-0.5">3</div>
               <p className="text-xs text-gray-300 leading-relaxed">
-                The <span className="text-white font-semibold">Room ID & Password</span> will appear in My Matches before the tournament starts.
+                The <span className="text-white">Room ID & Password</span> will appear in My Matches before the tournament starts.
               </p>
             </div>
           </div>
@@ -534,7 +540,7 @@ export default function RegisterPage() {
           {/* CTA buttons */}
           <div className="flex flex-col gap-3 mt-4">
             <button
-              onClick={() => router.push("/profile/matches")}
+              onClick={() => router.push("/my-matches")}
               className="w-full flex items-center justify-center gap-2 bg-[#F2AA00] text-black py-3 rounded-xl text-sm tracking-widest font-semibold hover:bg-[#e09e00] transition-all"
             >
               <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
