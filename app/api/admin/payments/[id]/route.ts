@@ -3,20 +3,23 @@ import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
 // ── Type-safe field selection ────────────────────────────
-type ModeField = 'filled_solo' | 'filled_duo' | 'filled_squad';
+type ModeField = "filled_solo" | "filled_duo" | "filled_squad";
 
 const getModeField = (mode: string | null): ModeField => {
-  switch ((mode ?? '').toLowerCase()) {
-    case 'solo':  return 'filled_solo';
-    case 'duo':   return 'filled_duo';
-    default:      return 'filled_squad';
+  switch ((mode ?? "").toLowerCase()) {
+    case "solo":
+      return "filled_solo";
+    case "duo":
+      return "filled_duo";
+    default:
+      return "filled_squad";
   }
 };
 
 // ── GET single payment ────────────────────────────────────
 export async function GET(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   const { error } = await requireAdmin(req);
   if (error) return error;
@@ -62,11 +65,10 @@ export async function GET(
   });
 }
 
-
 // ── PUT — approve or reject ───────────────────────────────
 export async function PUT(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   const { error } = await requireAdmin(req);
   if (error) return error;
@@ -76,10 +78,7 @@ export async function PUT(
     const { status } = await req.json();
 
     if (!["verified", "rejected"].includes(status)) {
-      return NextResponse.json(
-        { error: "Invalid status" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
 
     const paymentId = Number(id);
@@ -89,6 +88,9 @@ export async function PUT(
       // Get payment details
       const payment = await tx.payment.findUnique({
         where: { id: paymentId },
+        include: {
+          tournament: true,
+        },
       });
 
       if (!payment) throw new Error("Payment not found");
@@ -117,7 +119,7 @@ export async function PUT(
         // REDEEM already incremented during registration
         if (payment.method === "UPI" && updatedRegs.count > 0) {
           const modeField = getModeField(payment.tournament?.mode ?? null);
-          
+
           const updateData: Record<string, any> = {
             filled_slots: { increment: 1 }, // 1 team
           };
@@ -163,16 +165,15 @@ export async function PUT(
     console.error(err);
     return NextResponse.json(
       { error: "Failed to update payment" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-
 // ── DELETE payment ────────────────────────────────────────
 export async function DELETE(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   const { error } = await requireAdmin(req);
   if (error) return error;
@@ -186,10 +187,7 @@ export async function DELETE(
     });
 
     if (!payment) {
-      return NextResponse.json(
-        { error: "Payment not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
     }
 
     // If deleting an approved UPI payment, decrement slots
@@ -199,7 +197,7 @@ export async function DELETE(
     ) {
       await prisma.$transaction(async (tx) => {
         const modeField = getModeField(payment.tournament?.mode ?? null);
-        
+
         const updateData: Record<string, any> = {
           filled_slots: { decrement: 1 },
         };
@@ -240,7 +238,7 @@ export async function DELETE(
     console.error(err);
     return NextResponse.json(
       { error: "Failed to delete payment" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
