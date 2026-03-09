@@ -1,7 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/requireAuth";
 import { prisma } from "@/lib/prisma";
-import { uploadPaymentScreenshot } from "@/lib/cloudinary";   // ← new helper
+import { uploadPaymentScreenshot } from "@/lib/cloudinary";
+
+// ── helper ────────────────────────────────────────────────
+const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+// ✅ Type-safe field selection for per-mode slots
+type ModeField = 'filled_solo' | 'filled_duo' | 'filled_squad';
+type SlotField = 'slots_solo' | 'slots_duo' | 'slots_squad';
+
+const getModeField = (mode: string | null): ModeField => {
+  switch ((mode ?? '').toLowerCase()) {
+    case 'solo':  return 'filled_solo';
+    case 'duo':   return 'filled_duo';
+    default:      return 'filled_squad';
+  }
+};
+
+const getSlotField = (mode: string | null): SlotField => {
+  switch ((mode ?? '').toLowerCase()) {
+    case 'solo':  return 'slots_solo';
+    case 'duo':   return 'slots_duo';
+    default:      return 'slots_squad';
+  }
+};
 
 export async function POST(
   req: NextRequest,
@@ -14,44 +37,91 @@ export async function POST(
     const { id } = await context.params;
     const tournamentId = Number(id);
 
-    const formData = await req.formData();
-
-    const team_name = formData.get("team_name") as string;
-    const team_tag  = formData.get("team_tag")  as string;
-    const players   = JSON.parse(formData.get("players") as string);
-    const use_redeem = formData.get("use_redeem") === "true";
-
+    const formData       = await req.formData();
+    const team_name      = formData.get("team_name")      as string;
+    const team_tag       = formData.get("team_tag")       as string;
+    const players        = JSON.parse(formData.get("players") as string);
+    const use_redeem     = formData.get("use_redeem") === "true";
     const upi_id         = formData.get("upi_id")         as string | null;
     const transaction_id = formData.get("transaction_id") as string | null;
     const file           = formData.get("screenshot")     as File   | null;
 
-    if (!team_name || !players || players.length < 1) {
+    if (!team_name || !players || players.length < 1)
       return NextResponse.json({ error: "Team & players required" }, { status: 400 });
-    }
 
     const captain = players.find((p: any) => p.is_captain);
-    if (!captain) {
+    if (!captain)
       return NextResponse.json({ error: "Captain required" }, { status: 400 });
-    }
 
     const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
-    if (!tournament) {
+    if (!tournament)
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
-    }
-    if (tournament.filled_slots >= (tournament.total_slots ?? 0)) {
-      return NextResponse.json({ error: "Slots full" }, { status: 400 });
-    }
 
+    // ── PER-MODE SLOT CHECK ────────────────────
+    const modeField = getModeField(tournament.mode);
+    const slotField = getSlotField(tournament.mode);
+    
+    const modeFilled = (tournament as any)[modeField] ?? 0;
+    const modeTotal  = (tournament as any)[slotField]  ?? 0;
+
+    if (modeTotal > 0 && modeFilled >= modeTotal)
+      return NextResponse.json(
+        { error: `${capitalize(tournament.mode ?? "Squad")} is full (${modeFilled}/${modeTotal} teams)` },
+        { status: 400 },
+      );
+
+    // ── DUPLICATE REGISTRATION CHECK ─────────────────────────
     const exists = await prisma.registration.findFirst({
       where: { user_id: Number(user.id), tournament_id: tournamentId },
     });
-    if (exists) {
+    if (exists)
       return NextResponse.json({ error: "Already joined" }, { status: 400 });
-    }
 
     const entryFee = tournament.entry_fee ?? 0;
 
-    // ── REDEEM PATH ──────────────────────────────────────────
+    // ── HELPER: increment slots + auto-flip to "full" ────────
+    // ✅ FIX: Only increment per-mode OR total, not both!
+    // The per-mode IS part of the total, so just increment per-mode
+    // and filled_slots will be: filled_solo + filled_duo + filled_squad
+    const incrementSlots = async (tx: any) => {
+      // ✅ CORRECT: Only increment the per-mode field
+      // filled_slots will be calculated as sum of per-mode when displayed
+      const updateData: Record<string, any> = {
+        [modeField]: { increment: 1 },  // Only increment the mode-specific counter
+      };
+
+      const updated = await tx.tournament.update({
+        where: { id: tournamentId },
+        data: updateData,
+      });
+
+      // Auto-flip status to "full" when total slots are exhausted
+      // Calculate total filled from per-mode fields
+      const totalFilled = 
+        (updated.filled_solo ?? 0) +
+        (updated.filled_duo ?? 0) +
+        (updated.filled_squad ?? 0);
+
+      const totalFull =
+        (updated.total_slots ?? 0) > 0 &&
+        totalFilled >= (updated.total_slots ?? 0);
+
+      if (totalFull) {
+        await tx.tournament.update({
+          where: { id: tournamentId },
+          data: { status: "full" },
+        });
+      }
+
+      // ✅ NEW: Update filled_slots to match sum of per-mode
+      // This keeps them in sync
+      await tx.tournament.update({
+        where: { id: tournamentId },
+        data: { filled_slots: totalFilled },
+      });
+    };
+
+    // ── REDEEM PATH ───────────────────────────────────────────
     if (use_redeem) {
       const userData = await prisma.user.findUnique({
         where:  { id: Number(user.id) },
@@ -59,12 +129,11 @@ export async function POST(
       });
       const userPoints = userData?.total_points ?? 0;
 
-      if (userPoints < entryFee) {
+      if (userPoints < entryFee)
         return NextResponse.json(
           { error: `Insufficient points. You have ${userPoints} pts but need ${entryFee} pts.` },
           { status: 400 },
         );
-      }
 
       const result = await prisma.$transaction(async (tx) => {
         const reg = await tx.registration.create({
@@ -75,7 +144,7 @@ export async function POST(
             team_tag,
             captain_name:      captain.player_name,
             captain_player_id: captain.player_id,
-            status:            "pending",
+            status:            "approved", // ✅ APPROVED IMMEDIATELY
           },
         });
 
@@ -96,7 +165,7 @@ export async function POST(
             method:         "REDEEM",
             transaction_id: `REDEEM-${Date.now()}`,
             screenshot_url: null,
-            status:         "pending",
+            status:         "completed", // ✅ INSTANT PAYMENT
           },
         });
 
@@ -120,10 +189,8 @@ export async function POST(
           },
         });
 
-        await tx.tournament.update({
-          where: { id: tournamentId },
-          data:  { filled_slots: { increment: 1 } },
-        });
+        // ✅ REDEEM: INCREMENT HERE (instant approval)
+        await incrementSlots(tx);
 
         return { registration: updatedReg, payment };
       });
@@ -137,15 +204,13 @@ export async function POST(
       });
     }
 
-    // ── UPI PAYMENT PATH ─────────────────────────────────────
-    if (!upi_id || !transaction_id || !file) {
+    // ── UPI PATH ──────────────────────────────────────────────
+    if (!upi_id || !transaction_id || !file)
       return NextResponse.json(
         { error: "UPI ID, Transaction ID and screenshot are required" },
         { status: 400 },
       );
-    }
 
-    // ✅ Upload screenshot to Cloudinary (works on Vercel — no disk write)
     const fileUrl = await uploadPaymentScreenshot(file);
 
     const result = await prisma.$transaction(async (tx) => {
@@ -157,7 +222,7 @@ export async function POST(
           team_tag,
           captain_name:      captain.player_name,
           captain_player_id: captain.player_id,
-          status:            "pending",
+          status:            "pending", // ✅ PENDING (not approved yet)
         },
       });
 
@@ -177,8 +242,8 @@ export async function POST(
           amount:         entryFee,
           method:         "UPI",
           transaction_id,
-          screenshot_url: fileUrl,   // ← Cloudinary https:// URL
-          status:         "pending",
+          screenshot_url: fileUrl,
+          status:         "pending", // ✅ PENDING (awaiting admin verification)
         },
       });
 
@@ -187,10 +252,8 @@ export async function POST(
         data:  { payment_id: payment.id },
       });
 
-      await tx.tournament.update({
-        where: { id: tournamentId },
-        data:  { filled_slots: { increment: 1 } },
-      });
+      // ❌ DO NOT INCREMENT HERE FOR UPI
+      // Will increment in admin payment approval endpoint instead
 
       return { registration: updatedReg, payment };
     });

@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 
+// ── Type-safe field selection ────────────────────────────
+type ModeField = 'filled_solo' | 'filled_duo' | 'filled_squad';
+
+const getModeField = (mode: string | null): ModeField => {
+  switch ((mode ?? '').toLowerCase()) {
+    case 'solo':  return 'filled_solo';
+    case 'duo':   return 'filled_duo';
+    default:      return 'filled_squad';
+  }
+};
 
 // ── GET single payment ────────────────────────────────────
 export async function GET(
@@ -29,6 +39,7 @@ export async function GET(
     pending: "Pending",
     verified: "Approved",
     rejected: "Rejected",
+    completed: "Completed",
   };
 
   return NextResponse.json({
@@ -73,19 +84,24 @@ export async function PUT(
 
     const paymentId = Number(id);
 
-    // 🔥 TRANSACTION (important)
+    // 🔥 TRANSACTION
     const result = await prisma.$transaction(async (tx) => {
-      // Update payment
-      const payment = await tx.payment.update({
+      // Get payment details
+      const payment = await tx.payment.findUnique({
         where: { id: paymentId },
-        data: { status },
       });
 
       if (!payment) throw new Error("Payment not found");
 
+      // Update payment status
+      await tx.payment.update({
+        where: { id: paymentId },
+        data: { status },
+      });
+
       if (status === "verified") {
         // Approve registration
-        await tx.registration.updateMany({
+        const updatedRegs = await tx.registration.updateMany({
           where: {
             user_id: payment.user_id,
             tournament_id: payment.tournament_id,
@@ -97,18 +113,36 @@ export async function PUT(
           },
         });
 
-        // Increment slots
-        await tx.tournament.update({
-          where: { id: payment.tournament_id! },
-          data: {
-            filled_slots: {
-              increment: 1,
-            },
-          },
-        });
+        // ✅ ONLY increment if method is "UPI"
+        // REDEEM already incremented during registration
+        if (payment.method === "UPI" && updatedRegs.count > 0) {
+          const modeField = getModeField(payment.tournament?.mode ?? null);
+          
+          const updateData: Record<string, any> = {
+            filled_slots: { increment: 1 }, // 1 team
+          };
+          updateData[modeField] = { increment: 1 };
+
+          const updated = await tx.tournament.update({
+            where: { id: payment.tournament_id! },
+            data: updateData,
+          });
+
+          // Auto-flip to "full" if all slots taken
+          if (
+            (updated.total_slots ?? 0) > 0 &&
+            updated.filled_slots >= (updated.total_slots ?? 0)
+          ) {
+            await tx.tournament.update({
+              where: { id: payment.tournament_id! },
+              data: { status: "full" },
+            });
+          }
+        }
       }
 
       if (status === "rejected") {
+        // Reject registration (no slot increment)
         await tx.registration.updateMany({
           where: {
             user_id: payment.user_id,
@@ -146,15 +180,67 @@ export async function DELETE(
   const { id } = await context.params;
 
   try {
-    await prisma.payment.delete({
+    const payment = await prisma.payment.findUnique({
       where: { id: Number(id) },
+      include: { tournament: true },
     });
+
+    if (!payment) {
+      return NextResponse.json(
+        { error: "Payment not found" },
+        { status: 404 }
+      );
+    }
+
+    // If deleting an approved UPI payment, decrement slots
+    if (
+      (payment.status === "verified" || payment.status === "completed") &&
+      payment.method === "UPI"
+    ) {
+      await prisma.$transaction(async (tx) => {
+        const modeField = getModeField(payment.tournament?.mode ?? null);
+        
+        const updateData: Record<string, any> = {
+          filled_slots: { decrement: 1 },
+        };
+        updateData[modeField] = { decrement: 1 };
+
+        // Decrement slots
+        await tx.tournament.update({
+          where: { id: payment.tournament_id! },
+          data: updateData,
+        });
+
+        // Reject associated registrations
+        await tx.registration.updateMany({
+          where: {
+            user_id: payment.user_id,
+            tournament_id: payment.tournament_id,
+            status: "approved",
+          },
+          data: {
+            status: "rejected",
+          },
+        });
+
+        // Delete the payment
+        await tx.payment.delete({
+          where: { id: Number(id) },
+        });
+      });
+    } else {
+      // For REDEEM or pending payments, just delete without slot changes
+      await prisma.payment.delete({
+        where: { id: Number(id) },
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {
+    console.error(err);
     return NextResponse.json(
-      { error: "Payment not found" },
-      { status: 404 }
+      { error: "Failed to delete payment" },
+      { status: 500 }
     );
   }
 }

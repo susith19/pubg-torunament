@@ -9,14 +9,18 @@ import {
   faUser, faHashtag, faEnvelope, faMobileScreen,
   faShield, faCopy, faQrcode, faIndianRupeeSign,
   faStar, faCoins, faTrophy, faCrosshairs, faArrowRight,
+  faDownload, faX, faExpand,
 } from "@fortawesome/free-solid-svg-icons";
 import { getPlacementPoints, getKillPoints } from "@/lib/points";
 
 const ALL_MAPS = [
-  { name: "Erangel", src: "/Erangle.jpg"  },
-  { name: "Miramar", src: "/miramar.jpg"  },
-  { name: "Sanhok",  src: "/Sanhok.jpg"   },
-  { name: "Vikendi", src: "/Vikendi.jpg"  },
+  { name: "Erangel", src: "/maps/Erangle.jpg"  },
+  { name: "Miramar", src: "/maps/miramar.jpg"  },
+  { name: "Sanhok",  src: "/maps/Sanhok.jpg"   },
+  { name: "Vikendi", src: "/maps/Vikendi.jpg"  },
+  { name: "Livik",     src: "/maps/livik.png" },
+  { name: "Rondo",     src: "/maps/rondo.png" },
+  { name: "Warehouse", src: "/maps/warehouse.jpg" },
 ];
 
 const inputCls =
@@ -67,6 +71,67 @@ function PlayerSlot({ index, value, onChange, isCaptain = false }: any) {
         <div className="relative">
           <FontAwesomeIcon icon={faHashtag} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-xs pointer-events-none" />
           <input placeholder="Player ID" value={value.id} onChange={(e) => onChange("id", e.target.value)} className={inputCls + " pl-8"} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── QR CODE MODAL ─────────────────────────────────────
+function QRCodeModal({ qrUrl, upiName, onClose }: { qrUrl: string; upiName: string; onClose: () => void }) {
+  const downloadQR = async () => {
+    try {
+      const a = document.createElement("a");
+      a.href = qrUrl;
+      a.download = `${upiName || "payment"}-qr.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("Download failed:", err);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#0b0b0b] border border-gray-800 rounded-2xl overflow-hidden max-w-md w-full shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-[#F2AA00]/8">
+          <div className="flex items-center gap-2">
+            <FontAwesomeIcon icon={faQrcode} className="text-[#F2AA00] text-lg" />
+            <h2 className="text-white text-sm tracking-wide font-semibold">{upiName || "Payment QR"}</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-white transition-colors p-1"
+          >
+            <FontAwesomeIcon icon={faX} className="text-lg" />
+          </button>
+        </div>
+
+        {/* QR Image */}
+        <div className="p-6 bg-black/40">
+          <div className="bg-white rounded-xl p-4 border-2 border-[#F2AA00]/40 shadow-lg shadow-[#F2AA00]/10">
+            <img src={qrUrl} alt="Payment QR Code" className="w-full" />
+          </div>
+          <p className="text-center text-[10px] text-gray-600 mt-3 tracking-[0.2em] uppercase">Scan to Pay</p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-800 bg-black/20">
+          <button
+            onClick={downloadQR}
+            className="flex-1 flex items-center justify-center gap-2 bg-[#F2AA00] text-black py-2.5 rounded-lg text-xs tracking-widest font-semibold hover:bg-[#e09e00] transition-all active:scale-95"
+          >
+            <FontAwesomeIcon icon={faDownload} className="text-sm" />
+            Download QR
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 border border-gray-700 text-gray-300 py-2.5 rounded-lg text-xs tracking-widest hover:border-gray-600 hover:text-white transition-all"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
@@ -151,6 +216,7 @@ function PointsTable({ mode }: { mode: string }) {
 // ── PAYMENT BLOCK ────────────────────────────────────────
 function PaymentBlock({ config, fee }: { config: PaymentConfig; fee: number }) {
   const [copied, setCopied] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
   const hasUpi = config.upiId.trim().length > 0;
   const hasQr  = config.qrUrl.trim().length > 0;
   const feeStr = `₹${fee}`;
@@ -163,88 +229,110 @@ function PaymentBlock({ config, fee }: { config: PaymentConfig; fee: number }) {
   };
 
   return (
-    <div className="rounded-xl border border-[#F2AA00]/25 overflow-hidden bg-black">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-[#F2AA00]/8 border-b border-[#F2AA00]/15">
-        <div className="flex items-center gap-2">
-          <FontAwesomeIcon icon={faQrcode} className="text-[#F2AA00]" />
-          <span className="text-sm text-white tracking-wide">
-            {config.upiName || "Pay Entry Fee"}
-          </span>
+    <>
+      <div className="rounded-xl border border-[#F2AA00]/25 overflow-hidden bg-black">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 bg-[#F2AA00]/8 border-b border-[#F2AA00]/15">
+          <div className="flex items-center gap-2">
+            <FontAwesomeIcon icon={faQrcode} className="text-[#F2AA00]" />
+            <span className="text-sm text-white tracking-wide">
+              {config.upiName || "Pay Entry Fee"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 bg-[#F2AA00] text-black text-xs font-bold px-2.5 py-0.5 rounded-full font-mono">
+            <FontAwesomeIcon icon={faIndianRupeeSign} className="text-[10px]" />
+            {fee}
+          </div>
         </div>
-        <div className="flex items-center gap-1 bg-[#F2AA00] text-black text-xs font-bold px-2.5 py-0.5 rounded-full font-mono">
-          <FontAwesomeIcon icon={faIndianRupeeSign} className="text-[10px]" />
-          {fee}
+
+        <div className="p-4 space-y-4">
+          {(hasQr || hasUpi) ? (
+            <div className={`flex gap-5 ${hasQr ? "flex-col sm:flex-row items-start" : "flex-col"}`}>
+              {hasQr && (
+                <div className="flex-shrink-0 flex flex-col items-center">
+                  {/* Thumbnail with expand button */}
+                  <div className="relative">
+                    <div className="w-40 h-40 bg-white rounded-xl border-2 border-[#F2AA00]/30 p-2 shadow-lg shadow-[#F2AA00]/10">
+                      <img src={config.qrUrl} alt="Payment QR Code" className="w-full h-full object-contain" />
+                    </div>
+                    {/* Expand button */}
+                    <button
+                      onClick={() => setShowQRModal(true)}
+                      className="absolute top-2 right-2 bg-black/70 hover:bg-[#F2AA00] text-[#F2AA00] hover:text-black p-2 rounded-lg transition-all border border-[#F2AA00]/40 hover:border-[#F2AA00]"
+                      title="View full QR code"
+                    >
+                      <FontAwesomeIcon icon={faExpand} className="text-xs" />
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-gray-600 tracking-[0.2em] mt-2 uppercase">Scan to Pay</p>
+                </div>
+              )}
+              <div className="flex-1 w-full space-y-3">
+                {hasUpi && (
+                  <div>
+                    <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1.5">UPI ID</p>
+                    <button type="button" onClick={copyUpi}
+                      className="w-full flex items-center justify-between bg-[#0d0d0d] border border-gray-800 hover:border-[#F2AA00]/40 rounded-lg px-3 py-2.5 transition-all duration-150 group">
+                      <span className="text-sm text-[#F2AA00] font-mono tracking-wide">{config.upiId}</span>
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-all ${
+                        copied ? "bg-green-500/20 border-green-500/30" : "bg-gray-900 border-gray-700 group-hover:border-[#F2AA00]/40"
+                      }`}>
+                        <FontAwesomeIcon icon={copied ? faCheck : faCopy}
+                          className={`text-[10px] ${copied ? "text-green-400" : "text-gray-500 group-hover:text-[#F2AA00]"}`} />
+                      </div>
+                    </button>
+                    {copied && <p className="text-[10px] text-green-400 mt-1 tracking-widest">Copied ✓</p>}
+                  </div>
+                )}
+                <div>
+                  <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-2">How to pay</p>
+                  <div className="space-y-2">
+                    {[
+                      "Open GPay, PhonePe, Paytm or any UPI app",
+                      hasQr ? "Scan the QR code" : hasUpi ? "Search or enter the UPI ID above" : "Make the payment via UPI",
+                      `Pay exactly ${feeStr} — not more, not less`,
+                      "Screenshot the payment success screen",
+                      "Upload it below and enter the Transaction ID",
+                    ].map((step, i) => (
+                      <div key={i} className="flex items-start gap-2.5">
+                        <div className="w-5 h-5 rounded-full bg-[#F2AA00]/10 border border-[#F2AA00]/25 flex items-center justify-center text-[9px] text-[#F2AA00] flex-shrink-0 mt-0.5">
+                          {i + 1}
+                        </div>
+                        <p className="text-xs text-gray-500 leading-relaxed">{step}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-start gap-2.5 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-4 py-3">
+                <FontAwesomeIcon icon={faCircleExclamation} className="text-[#F2AA00]/70 text-sm mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-gray-400 leading-relaxed">
+                  Pay <span className="text-[#F2AA00] font-mono font-bold">{feeStr}</span> via UPI to the organiser, then upload your payment screenshot and enter the Transaction ID below.
+                </p>
+              </div>
+            </div>
+          )}
+          {config.note && (
+            <div className="flex items-start gap-2 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-3 py-2.5">
+              <FontAwesomeIcon icon={faCircleExclamation} className="text-[#F2AA00]/70 text-xs mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-gray-400 leading-relaxed">{config.note}</p>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
-        {(hasQr || hasUpi) ? (
-          <div className={`flex gap-5 ${hasQr ? "flex-col sm:flex-row items-start" : "flex-col"}`}>
-            {hasQr && (
-              <div className="flex-shrink-0 flex flex-col items-center">
-                <div className="w-40 h-40 bg-white rounded-xl border-2 border-[#F2AA00]/30 p-2 shadow-lg shadow-[#F2AA00]/10">
-                  <img src={config.qrUrl} alt="Payment QR Code" className="w-full h-full object-contain" />
-                </div>
-                <p className="text-[9px] text-gray-600 tracking-[0.2em] mt-2 uppercase">Scan to Pay</p>
-              </div>
-            )}
-            <div className="flex-1 w-full space-y-3">
-              {hasUpi && (
-                <div>
-                  <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1.5">UPI ID</p>
-                  <button type="button" onClick={copyUpi}
-                    className="w-full flex items-center justify-between bg-[#0d0d0d] border border-gray-800 hover:border-[#F2AA00]/40 rounded-lg px-3 py-2.5 transition-all duration-150 group">
-                    <span className="text-sm text-[#F2AA00] font-mono tracking-wide">{config.upiId}</span>
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-all ${
-                      copied ? "bg-green-500/20 border-green-500/30" : "bg-gray-900 border-gray-700 group-hover:border-[#F2AA00]/40"
-                    }`}>
-                      <FontAwesomeIcon icon={copied ? faCheck : faCopy}
-                        className={`text-[10px] ${copied ? "text-green-400" : "text-gray-500 group-hover:text-[#F2AA00]"}`} />
-                    </div>
-                  </button>
-                  {copied && <p className="text-[10px] text-green-400 mt-1 tracking-widest">Copied ✓</p>}
-                </div>
-              )}
-              <div>
-                <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-2">How to pay</p>
-                <div className="space-y-2">
-                  {[
-                    "Open GPay, PhonePe, Paytm or any UPI app",
-                    hasQr ? "Scan the QR code" : hasUpi ? "Search or enter the UPI ID above" : "Make the payment via UPI",
-                    `Pay exactly ${feeStr} — not more, not less`,
-                    "Screenshot the payment success screen",
-                    "Upload it below and enter the Transaction ID",
-                  ].map((step, i) => (
-                    <div key={i} className="flex items-start gap-2.5">
-                      <div className="w-5 h-5 rounded-full bg-[#F2AA00]/10 border border-[#F2AA00]/25 flex items-center justify-center text-[9px] text-[#F2AA00] flex-shrink-0 mt-0.5">
-                        {i + 1}
-                      </div>
-                      <p className="text-xs text-gray-500 leading-relaxed">{step}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-start gap-2.5 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-4 py-3">
-              <FontAwesomeIcon icon={faCircleExclamation} className="text-[#F2AA00]/70 text-sm mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-gray-400 leading-relaxed">
-                Pay <span className="text-[#F2AA00] font-mono font-bold">{feeStr}</span> via UPI to the organiser, then upload your payment screenshot and enter the Transaction ID below.
-              </p>
-            </div>
-          </div>
-        )}
-        {config.note && (
-          <div className="flex items-start gap-2 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-3 py-2.5">
-            <FontAwesomeIcon icon={faCircleExclamation} className="text-[#F2AA00]/70 text-xs mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-gray-400 leading-relaxed">{config.note}</p>
-          </div>
-        )}
-      </div>
-    </div>
+      {/* QR Modal */}
+      {showQRModal && (
+        <QRCodeModal
+          qrUrl={config.qrUrl}
+          upiName={config.upiName}
+          onClose={() => setShowQRModal(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -266,6 +354,7 @@ export default function RegisterPage() {
   const [screenshot,     setScreenshot]     = useState<File | null>(null);
   const [players,        setPlayers]        = useState<{ name: string; id: string }[]>([]);
   const [submitted,      setSubmitted]      = useState(false);
+  const [isLoading,      setIsLoading]      = useState(false);
 
   // ── Redeem points state ──
   const [userPoints,     setUserPoints]     = useState<number>(0);
@@ -445,9 +534,13 @@ export default function RegisterPage() {
 
   const handleSubmit = async () => {
     if (!isValid) return;
+    
+    setIsLoading(true);  // ← Start loading
+    
     try {
       const token = localStorage.getItem("token");
       if (!token) {
+        setIsLoading(false);
         router.replace(`/login?message=Session expired&redirect=/tournaments/${id}/register`);
         return;
       }
@@ -476,19 +569,98 @@ export default function RegisterPage() {
       });
       const data = await res.json();
       if (res.status === 401) {
+        setIsLoading(false);
         localStorage.removeItem("token");
         router.replace(`/login?message=Session expired&redirect=/tournaments/${id}/register`);
         return;
       }
-      if (!res.ok) { alert(data.error || "Registration failed"); return; }
+      if (!res.ok) { 
+        setIsLoading(false);
+        alert(data.error || "Registration failed"); 
+        return; 
+      }
       setSubmitted(true);
+      setIsLoading(false);
     } catch (err) {
       console.error(err);
+      setIsLoading(false);
       alert("Something went wrong");
     }
   };
 
   if (authChecked === null) return <div className="bg-black min-h-screen" />;
+
+  // ── LOADING SCREEN ──
+  if (isLoading) {
+    return (
+      <div className="bg-black text-white min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+        {/* Animated background glow */}
+        <div className="pointer-events-none fixed inset-0">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-[#F2AA00]/8 blur-[120px] animate-pulse" />
+        </div>
+
+        <div className="text-center space-y-6 max-w-sm w-full relative z-10">
+          {/* Animated spinner */}
+          <div className="flex justify-center">
+            <div className="relative w-20 h-20">
+              {/* Outer rotating ring */}
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[#F2AA00] border-r-[#F2AA00] animate-spin" />
+              {/* Middle ring (slower) */}
+              <div className="absolute inset-2 rounded-full border-2 border-transparent border-b-[#F2AA00]/60 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '2s' }} />
+              {/* Center dot */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-2 h-2 rounded-full bg-[#F2AA00]" />
+              </div>
+            </div>
+          </div>
+
+          {/* Loading text */}
+          <div className="space-y-2">
+            <h2 className="text-xl tracking-wide">Processing Registration</h2>
+            <p className="text-sm text-gray-400">
+              Verifying your details and saving your slot...
+            </p>
+          </div>
+
+          {/* Progress indicator */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-[11px] text-gray-600 tracking-widest uppercase">
+              <span>Please wait</span>
+              <span>~3-5 seconds</span>
+            </div>
+            <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-transparent via-[#F2AA00] to-transparent rounded-full animate-pulse w-full" />
+            </div>
+          </div>
+
+          {/* Info text */}
+          <div className="space-y-2 text-left">
+            <div className="flex items-start gap-2.5 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-3 py-2.5">
+              <div className="w-4 h-4 rounded-full bg-[#F2AA00]/20 border border-[#F2AA00]/40 flex items-center justify-center text-[8px] text-[#F2AA00] flex-shrink-0 mt-0.5">
+                ✓
+              </div>
+              <p className="text-xs text-gray-400">
+                Team details saved
+              </p>
+            </div>
+            <div className="flex items-start gap-2.5 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-3 py-2.5">
+              <div className="w-4 h-4 rounded-full bg-[#F2AA00]/20 border border-[#F2AA00]/40 flex items-center justify-center text-[8px] text-[#F2AA00] flex-shrink-0 mt-0.5">
+                ⏳
+              </div>
+              <p className="text-xs text-gray-400">
+                Processing payment & slot confirmation...
+              </p>
+            </div>
+          </div>
+
+          {/* Reassurance message */}
+          <p className="text-[11px] text-gray-600 tracking-widest uppercase">
+            Do not close this page
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // ── SUCCESS SCREEN ──
   if (submitted) {
@@ -818,14 +990,16 @@ export default function RegisterPage() {
             {/* SUBMIT */}
             <button
               onClick={handleSubmit}
-              disabled={!isValid}
+              disabled={!isValid || isLoading}
               className={`w-full py-4 rounded-xl text-sm tracking-widest transition-all duration-200 ${
-                isValid
+                isValid && !isLoading
                   ? "bg-[#F2AA00] text-black hover:bg-[#e09e00] hover:shadow-xl hover:shadow-[#F2AA00]/20 active:scale-[0.98]"
                   : "bg-[#0b0b0b] text-gray-600 border border-gray-800 cursor-not-allowed"
               }`}
             >
-              {isValid
+              {isLoading
+                ? "Processing..."
+                : isValid
                 ? useRedeem
                   ? `Register & Redeem ${tournament.fee} Points`
                   : "Submit Registration"

@@ -11,45 +11,53 @@ import {
 
 // ── types ──────────────────────────────────────────────────
 type Tournament = {
-  id:       number;
-  name:     string;
-  map:      string;
-  mode:     string;
+  id: number;
+  name: string;
+  map: string;
+  mode: string;
   platform: string;
-  slots:    number;
-  filled:   number;
-  fee:      string;
-  status:   string;
-  date:     string;
-  rawDate:  string;
-  roomId:   string | null;
+  slots: number;      // total across all modes
+  filled: number;     // total filled across all modes
+  fee: string;
+  status: string;
+  date: string;
+  rawDate: string;
+  roomId: string | null;
   roomPass: string | null;
   // per-mode fees
-  feeSolo:  number;
-  feeDuo:   number;
+  feeSolo: number;
+  feeDuo: number;
   feeSquad: number;
+  // per-mode slots (teams)
+  slotsSolo: number;
+  slotsDuo: number;
+  slotsSquad: number;
+  // per-mode filled (teams registered)
+  filledSolo: number;
+  filledDuo: number;
+  filledSquad: number;
   prizePool: number;
 };
 
 type FormData = {
-  name:      string;
-  map:       string;
-  mode:      string;
-  platform:  string;
-  slots:     number;
-  fee:       string;   // legacy single fee (kept for display)
-  feeSolo:   number;
-  feeDuo:    number;
-  feeSquad:  number;
-  status:    string;
-  date:      string;
-  time:      string;
+  name: string;
+  map: string;
+  mode: string;
+  platform: string;
+  fee: string;
+  feeSolo: number;
+  feeDuo: number;
+  feeSquad: number;
+  slotsSolo: number;
+  slotsDuo: number;
+  slotsSquad: number;
+  status: string;
+  date: string;
+  time: string;
   prizePool: string;
 };
 
-// ── Hardcoded fallback (used before localStorage loads) ───
 const FACTORY_DEFAULTS = { feeSolo: 50, feeDuo: 100, feeSquad: 150 };
-// Keep alias so existing references compile
 const DEFAULT_FEES = FACTORY_DEFAULTS;
 
 const statusStyle: Record<string, string> = {
@@ -104,18 +112,20 @@ function splitRawDate(iso: string): { date: string; time: string } {
 function fmtDisplay(iso: string): string {
   if (!iso) return "—";
   try {
-    return new Date(iso.replace(" ", "T")).toLocaleString("en-IN", {
+    const d = new Date(iso.replace(" ", "T"));
+    const ist = d.toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
       day: "numeric", month: "short", year: "numeric",
       hour: "2-digit", minute: "2-digit", hour12: true,
     });
+    return `${ist} IST`;
   } catch { return iso; }
 }
 
-// active fee for current mode
 function activeFee(form: FormData): number {
   const m = form.mode.toLowerCase();
-  if (m === "solo")  return form.feeSolo;
-  if (m === "duo")   return form.feeDuo;
+  if (m === "solo") return form.feeSolo;
+  if (m === "duo")  return form.feeDuo;
   return form.feeSquad;
 }
 
@@ -133,89 +143,56 @@ function ModalHeader({ title, onClose }: { title: string; onClose: () => void })
   return (
     <div className="flex justify-between items-center px-6 py-4 border-b border-gray-800">
       <p className="text-md tracking-wide text-white">{title}</p>
-      <button onClick={onClose} className="text-gray-600 hover:text-white transition-colors"><FontAwesomeIcon icon={faXmark} /></button>
+      <button onClick={onClose} className="text-gray-600 hover:text-white transition-colors">
+        <FontAwesomeIcon icon={faXmark} />
+      </button>
     </div>
   );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-md text-gray-600 tracking-widest uppercase mb-1.5">{label}</p>
+      <p className="text-md text-gray-600 tracking-widests uppercase mb-1.5">{label}</p>
       {children}
     </div>
   );
 }
 
 // ── PER-MODE FEES EDITOR ───────────────────────────────────
-function FeesEditor({ form, set }: {
-  form: FormData;
-  set: (k: keyof FormData, v: any) => void;
-}) {
+function FeesEditor({ form, set }: { form: FormData; set: (k: keyof FormData, v: any) => void }) {
   const fees = [
     { label: "Solo",  key: "feeSolo"  as const, default: DEFAULT_FEES.feeSolo  },
     { label: "Duo",   key: "feeDuo"   as const, default: DEFAULT_FEES.feeDuo   },
     { label: "Squad", key: "feeSquad" as const, default: DEFAULT_FEES.feeSquad },
   ];
-
   return (
     <div className="bg-black border border-gray-800 rounded-xl p-4 space-y-3">
       <div className="flex items-center gap-2 mb-1">
         <FontAwesomeIcon icon={faCoins} className="text-[#F2AA00]/60 text-md" />
-        <p className="text-md text-gray-600 tracking-widest uppercase">Entry Fees by Mode</p>
+        <p className="text-md text-gray-600 tracking-widests uppercase">Entry Fees by Mode</p>
       </div>
-
       <div className="grid grid-cols-3 gap-2">
         {fees.map(({ label, key, default: def }) => {
           const isActive = form.mode.toLowerCase() === label.toLowerCase();
           return (
-            <div
-              key={key}
-              className={`rounded-lg border p-2.5 transition-all duration-150 ${
-                isActive
-                  ? "border-[#F2AA00]/40 bg-[#F2AA00]/5"
-                  : "border-gray-800 bg-black"
-              }`}
-            >
+            <div key={key} className={`rounded-lg border p-2.5 transition-all duration-150 ${isActive ? "border-[#F2AA00]/40 bg-[#F2AA00]/5" : "border-gray-800 bg-black"}`}>
               <div className="flex items-center justify-between mb-1.5">
-                <span className={`text-[10px] tracking-widest uppercase ${isActive ? "text-[#F2AA00]" : "text-gray-600"}`}>
-                  {label}
-                </span>
-                {isActive && (
-                  <span className="text-[8px] text-[#F2AA00] border border-[#F2AA00]/30 px-1 py-0.5 rounded tracking-widest">
-                    ACTIVE
-                  </span>
-                )}
+                <span className={`text-[10px] tracking-widests uppercase ${isActive ? "text-[#F2AA00]" : "text-gray-600"}`}>{label}</span>
+                {isActive && <span className="text-[8px] text-[#F2AA00] border border-[#F2AA00]/30 px-1 py-0.5 rounded tracking-widests">ACTIVE</span>}
               </div>
               <div className="relative">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-md">₹</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={form[key]}
-                  onChange={(e) => set(key, Number(e.target.value))}
-                  className={`w-full bg-transparent border rounded px-5 py-1.5 text-md font-mono outline-none transition-colors ${
-                    isActive
-                      ? "border-[#F2AA00]/30 text-[#F2AA00] focus:border-[#F2AA00]"
-                      : "border-gray-800 text-gray-400 focus:border-gray-600"
-                  }`}
-                />
+                <input type="number" min={0} value={form[key]} onChange={(e) => set(key, Number(e.target.value))}
+                  className={`w-full bg-transparent border rounded px-5 py-1.5 text-md font-mono outline-none transition-colors ${isActive ? "border-[#F2AA00]/30 text-[#F2AA00] focus:border-[#F2AA00]" : "border-gray-800 text-gray-400 focus:border-gray-600"}`} />
               </div>
-              <button
-                onClick={() => set(key, def)}
-                className="text-md text-gray-700 hover:text-gray-500 mt-1 tracking-widest transition-colors"
-              >
-                reset to ₹{def}
-              </button>
+              <button onClick={() => set(key, def)} className="text-md text-gray-700 hover:text-gray-500 mt-1 tracking-widests transition-colors">reset to ₹{def}</button>
             </div>
           );
         })}
       </div>
-
       <div className="flex items-center justify-between pt-1 border-t border-gray-800">
-        <span className="text-[10px] text-gray-600 tracking-widest uppercase">Current tournament fee</span>
-        <span className="text-[#F2AA00] font-mono text-md">
-          ₹{activeFee(form)} <span className="text-gray-600 text-[10px] capitalize">({form.mode})</span>
-        </span>
+        <span className="text-[10px] text-gray-600 tracking-widests uppercase">Current tournament fee</span>
+        <span className="text-[#F2AA00] font-mono text-md">₹{activeFee(form)} <span className="text-gray-600 text-[10px] capitalize">({form.mode})</span></span>
       </div>
     </div>
   );
@@ -225,13 +202,23 @@ function FeesEditor({ form, set }: {
 function ViewModal({ t, onClose, onEdit, onRoomEdit }: {
   t: Tournament; onClose: () => void; onEdit: () => void; onRoomEdit: () => void;
 }) {
-  const percent = t.slots > 0 ? Math.round((t.filled / t.slots) * 100) : 0;
-  const isLive  = t.status === "Live";
+  const isLive = t.status === "Live";
+  const totalSlots  = t.slotsSolo + t.slotsDuo + t.slotsSquad;
+  // ✅ FIX #5: Guard against undefined filled values
+  const totalFilled = (t.filledSolo ?? 0) + (t.filledDuo ?? 0) + (t.filledSquad ?? 0);
+  const percent     = totalSlots > 0 ? Math.round((totalFilled / totalSlots) * 100) : 0;
+
+  // ✅ FIX #3: Ensure filled values have defaults
+  const modeSlots = [
+    { label: "Solo",  slots: t.slotsSolo,  filled: t.filledSolo ?? 0,  color: "text-blue-400",   border: "border-blue-500/20",   bg: "bg-blue-500/5"   },
+    { label: "Duo",   slots: t.slotsDuo,   filled: t.filledDuo ?? 0,   color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/5" },
+    { label: "Squad", slots: t.slotsSquad, filled: t.filledSquad ?? 0, color: "text-[#F2AA00]",  border: "border-[#F2AA00]/20",  bg: "bg-[#F2AA00]/5"  },
+  ];
 
   return (
     <Overlay onClose={onClose}>
       <ModalHeader title="Tournament Details" onClose={onClose} />
-      <div className="p-6 space-y-4">
+      <div className="p-6 space-y-4 overflow-y-auto max-h-[85vh]">
         <div className="flex items-center gap-3 pb-4 border-b border-gray-800">
           <div className="w-10 h-10 rounded-lg bg-[#F2AA00]/10 flex items-center justify-center">
             <FontAwesomeIcon icon={faTrophy} className="text-[#F2AA00]" />
@@ -253,15 +240,15 @@ function ViewModal({ t, onClose, onEdit, onRoomEdit }: {
             { label: "Mode",              val: t.mode },
           ].map((r, i) => (
             <div key={i} className="bg-black border border-gray-800 rounded-lg px-3 py-2.5">
-              <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1">{r.label}</p>
+              <p className="text-[10px] text-gray-600 tracking-widests uppercase mb-1">{r.label}</p>
               <p className="text-md text-white">{r.val}</p>
             </div>
           ))}
         </div>
 
-        {/* Per-mode fees display */}
+        {/* Per-mode fees */}
         <div className="bg-black border border-gray-800 rounded-xl px-4 py-3">
-          <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-2.5">Entry Fees by Mode</p>
+          <p className="text-[10px] text-gray-600 tracking-widests uppercase mb-2.5">Entry Fees by Mode</p>
           <div className="grid grid-cols-3 gap-2">
             {[
               { label: "Solo",  val: t.feeSolo  },
@@ -271,7 +258,7 @@ function ViewModal({ t, onClose, onEdit, onRoomEdit }: {
               const isActive = t.mode.toLowerCase() === label.toLowerCase();
               return (
                 <div key={label} className={`rounded-lg border px-2.5 py-2 text-center ${isActive ? "border-[#F2AA00]/30 bg-[#F2AA00]/5" : "border-gray-800"}`}>
-                  <p className={`text-md tracking-widest uppercase mb-1 ${isActive ? "text-[#F2AA00]" : "text-gray-600"}`}>{label}</p>
+                  <p className={`text-md tracking-widests uppercase mb-1 ${isActive ? "text-[#F2AA00]" : "text-gray-600"}`}>{label}</p>
                   <p className={`font-mono text-md ${isActive ? "text-[#F2AA00]" : "text-gray-500"}`}>₹{val}</p>
                 </div>
               );
@@ -279,43 +266,68 @@ function ViewModal({ t, onClose, onEdit, onRoomEdit }: {
           </div>
         </div>
 
+        {/* Per-mode slots breakdown */}
+        <div className="bg-black border border-gray-800 rounded-xl px-4 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] text-gray-600 tracking-widests uppercase">Slots by Mode (Teams)</p>
+            <span className="text-[10px] font-mono text-gray-500">{totalFilled}/{totalSlots} total · {percent}%</span>
+          </div>
+          <div className="space-y-2">
+            {modeSlots.map(({ label, slots, filled, color, border, bg }) => {
+              if (slots === 0) return null;
+              const pct = slots > 0 ? Math.round((filled / slots) * 100) : 0;
+              const isActive = t.mode.toLowerCase() === label.toLowerCase();
+              return (
+                <div key={label} className={`rounded-lg border px-3 py-2 ${isActive ? `${border} ${bg}` : "border-gray-800/60"}`}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className={`text-[10px] tracking-widests uppercase ${isActive ? color : "text-gray-600"}`}>{label}</span>
+                    <span className={`text-[10px] font-mono ${isActive ? color : "text-gray-500"}`}>{filled}/{slots} teams · {pct}%</span>
+                  </div>
+                  <div className="h-[3px] bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${pct === 100 ? "bg-red-500" : isActive ? "bg-current" : "bg-gray-600"}`}
+                      style={{ width: `${pct}%`, color: isActive ? undefined : undefined }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Total bar */}
+          <div className="mt-3 pt-2 border-t border-gray-800">
+            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full transition-all duration-700 ${percent === 100 ? "bg-red-500" : "bg-[#F2AA00]"}`} style={{ width: `${percent}%` }} />
+            </div>
+          </div>
+        </div>
+
         {isLive && (
           <div className={`rounded-xl border px-4 py-3.5 space-y-2.5 ${t.roomId ? "border-[#F2AA00]/30 bg-[#F2AA00]/5" : "border-gray-800 bg-black"}`}>
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[10px] text-gray-500 tracking-widest uppercase">Room Info</p>
+              <p className="text-[10px] text-gray-500 tracking-widests uppercase">Room Info</p>
               {!t.roomId && <span className="text-[10px] text-[#F2AA00] border border-[#F2AA00]/30 bg-[#F2AA00]/10 px-2 py-0.5 rounded-full">Not set</span>}
             </div>
             <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1">Room ID</p>
+                <p className="text-[10px] text-gray-600 tracking-widests uppercase mb-1">Room ID</p>
                 <p className={`text-md font-mono ${t.roomId ? "text-[#F2AA00]" : "text-gray-700"}`}>{t.roomId || "—"}</p>
               </div>
               <div>
-                <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1">Password</p>
+                <p className="text-[10px] text-gray-600 tracking-widests uppercase mb-1">Password</p>
                 <p className={`text-md font-mono ${t.roomPass ? "text-[#F2AA00]" : "text-gray-700"}`}>{t.roomPass || "—"}</p>
               </div>
             </div>
           </div>
         )}
 
-        <div className="bg-black border border-gray-800 rounded-lg px-3 py-3">
-          <div className="flex justify-between text-md text-gray-500 mb-2">
-            <span>Slots Filled</span>
-            <span>{t.filled} / {t.slots} · {percent}%</span>
-          </div>
-          <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full transition-all duration-700 ${percent === 100 ? "bg-red-500" : "bg-[#F2AA00]"}`} style={{ width: `${percent}%` }} />
-          </div>
-        </div>
-
         <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 border border-gray-800 text-gray-400 py-2.5 text-md tracking-widest rounded-lg hover:border-gray-700 hover:text-white transition-all duration-150">Close</button>
+          <button onClick={onClose} className="flex-1 border border-gray-800 text-gray-400 py-2.5 text-md tracking-widests rounded-lg hover:border-gray-700 hover:text-white transition-all duration-150">Close</button>
           {isLive && (
-            <button onClick={onRoomEdit} className="flex-1 border border-[#F2AA00]/40 text-[#F2AA00] py-2.5 text-md tracking-widest rounded-lg hover:bg-[#F2AA00]/10 transition-all duration-150">
+            <button onClick={onRoomEdit} className="flex-1 border border-[#F2AA00]/40 text-[#F2AA00] py-2.5 text-md tracking-widests rounded-lg hover:bg-[#F2AA00]/10 transition-all duration-150">
               <FontAwesomeIcon icon={faKey} className="mr-1.5" />{t.roomId ? "Update Room" : "Set Room"}
             </button>
           )}
-          <button onClick={onEdit} className="flex-1 border border-gray-700 text-gray-300 py-2.5 text-md tracking-widest rounded-lg hover:border-[#F2AA00]/40 hover:text-[#F2AA00] transition-all duration-150">
+          <button onClick={onEdit} className="flex-1 border border-gray-700 text-gray-300 py-2.5 text-md tracking-widests rounded-lg hover:border-[#F2AA00]/40 hover:text-[#F2AA00] transition-all duration-150">
             <FontAwesomeIcon icon={faPen} className="mr-1.5" />Edit
           </button>
         </div>
@@ -341,15 +353,16 @@ function RoomModal({ t, onSave, onClose }: { t: Tournament; onSave: (id: string,
           </div>
         </div>
         <Field label="Room ID">
-          <input value={roomId} onChange={(e) => setRoomId(e.target.value)} placeholder="e.g. 7482910" className={inputCls + " font-mono tracking-widest"} />
+          <input value={roomId} onChange={(e) => setRoomId(e.target.value)} placeholder="e.g. 7482910" className={inputCls + " font-mono tracking-widests"} />
         </Field>
         <Field label="Room Password">
-          <input value={roomPass} onChange={(e) => setRoomPass(e.target.value)} placeholder="e.g. squad123" className={inputCls + " font-mono tracking-widest"} />
+          <input value={roomPass} onChange={(e) => setRoomPass(e.target.value)} placeholder="e.g. squad123" className={inputCls + " font-mono tracking-widests"} />
           <p className="text-[10px] text-gray-700 mt-1.5">Leave blank for no password</p>
         </Field>
         <div className="flex gap-3 pt-1">
-          <button onClick={onClose} className="flex-1 border border-gray-800 text-gray-400 py-2.5 text-md tracking-widest rounded-lg hover:border-gray-700 hover:text-white transition-all duration-150">Cancel</button>
-          <button onClick={() => valid && onSave(roomId.trim(), roomPass.trim())} className={`flex-1 py-2.5 text-md tracking-widest rounded-lg border transition-all duration-150 active:scale-[0.97] ${valid ? "bg-[#F2AA00] text-black border-[#F2AA00] hover:bg-[#e09e00]" : "bg-gray-800/40 text-gray-600 border-gray-800 cursor-not-allowed"}`}>
+          <button onClick={onClose} className="flex-1 border border-gray-800 text-gray-400 py-2.5 text-md tracking-widests rounded-lg hover:border-gray-700 hover:text-white transition-all duration-150">Cancel</button>
+          <button onClick={() => valid && onSave(roomId.trim(), roomPass.trim())}
+            className={`flex-1 py-2.5 text-md tracking-widests rounded-lg border transition-all duration-150 active:scale-[0.97] ${valid ? "bg-[#F2AA00] text-black border-[#F2AA00] hover:bg-[#e09e00]" : "bg-gray-800/40 text-gray-600 border-gray-800 cursor-not-allowed"}`}>
             Save Room Info
           </button>
         </div>
@@ -360,18 +373,17 @@ function RoomModal({ t, onSave, onClose }: { t: Tournament; onSave: (id: string,
 
 // ── CREATE / EDIT MODAL ────────────────────────────────────
 function TournamentFormModal({ initial, title, onSave, onClose }: {
-  initial: FormData; title: string;
-  onSave: (d: FormData) => void; onClose: () => void;
+  initial: FormData; title: string; onSave: (d: FormData) => void; onClose: () => void;
 }) {
   const [form, setForm] = useState<FormData>(initial);
   const set = (k: keyof FormData, v: any) => setForm((p) => ({ ...p, [k]: v }));
-  const valid = form.name.trim() !== "" && form.date.trim() !== "";
+  const totalSlots = form.slotsSolo + form.slotsDuo + form.slotsSquad;
+  const valid = form.name.trim() !== "" && form.date.trim() !== "" && totalSlots > 0;
 
   return (
     <Overlay onClose={onClose}>
       <ModalHeader title={title} onClose={onClose} />
       <div className="p-6 space-y-4 overflow-y-auto max-h-[80vh]">
-
         <Field label="Tournament Name">
           <input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Erangel Squad Battle" className={inputCls} />
         </Field>
@@ -405,40 +417,69 @@ function TournamentFormModal({ initial, title, onSave, onClose }: {
         {/* ── PER-MODE FEES ─────────────────────── */}
         <FeesEditor form={form} set={set} />
 
+        {/* ── PER-MODE SLOTS ────────────────────── */}
+        <div className="bg-black border border-gray-800 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-md text-gray-600 tracking-widests uppercase">Slots per Mode</p>
+            <span className="text-[10px] font-mono text-gray-600 border border-gray-800 px-2 py-0.5 rounded">
+              Total: <span className="text-white">{totalSlots}</span> teams
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { label: "Solo",  key: "slotsSolo"  as const, color: "text-blue-400",   border: "border-blue-500/20",   bg: "bg-blue-500/5",   active: form.mode === "Solo"  },
+              { label: "Duo",   key: "slotsDuo"   as const, color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/5", active: form.mode === "Duo"   },
+              { label: "Squad", key: "slotsSquad" as const, color: "text-[#F2AA00]",  border: "border-[#F2AA00]/20",  bg: "bg-[#F2AA00]/5",  active: form.mode === "Squad" },
+            ] as const).map(({ label, key, color, border, bg, active }) => (
+              <div key={key} className={`rounded-lg border p-2.5 transition-all duration-150 ${active ? `${border} ${bg}` : "border-gray-800 bg-black"}`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className={`text-[10px] tracking-widests uppercase ${active ? color : "text-gray-600"}`}>{label}</span>
+                  {active && <span className={`text-[8px] border px-1 py-0.5 rounded tracking-widests ${color} ${border}`}>ACTIVE</span>}
+                </div>
+                <input
+                  type="number" min={0} value={form[key]}
+                  onChange={(e) => set(key, Number(e.target.value))}
+                  className={`w-full bg-transparent border rounded px-2 py-1.5 text-md font-mono outline-none transition-colors ${active ? `${border} ${color} focus:border-current` : "border-gray-800 text-gray-400 focus:border-gray-600"}`}
+                />
+                <p className="text-[10px] text-gray-700 mt-1">teams</p>
+              </div>
+            ))}
+          </div>
+          {totalSlots === 0 && <p className="text-[10px] text-red-400/70">Set at least one mode's slots</p>}
+          <p className="text-[10px] text-gray-700 border-t border-gray-800 pt-2">
+            1 slot = 1 team &nbsp;·&nbsp; Solo = 1 player &nbsp;·&nbsp; Duo = 2 players &nbsp;·&nbsp; Squad = 4 players
+          </p>
+        </div>
+
         {/* ── DATE + TIME ─────────────────────────── */}
         <div className="bg-black border border-gray-800 rounded-xl p-4 space-y-3">
-          <p className="text-md text-gray-600 tracking-widest uppercase">Start Date & Time</p>
+          <p className="text-md text-gray-600 tracking-widests uppercase">Start Date & Time</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="text-[10px] text-gray-700 tracking-widest uppercase mb-1.5">Date</p>
+              <p className="text-[10px] text-gray-700 tracking-widests uppercase mb-1.5">Date</p>
               <input type="date" value={form.date} onChange={(e) => set("date", e.target.value)} className={inputCls + " [color-scheme:dark]"} />
             </div>
             <div>
-              <p className="text-[10px] text-gray-700 tracking-widest uppercase mb-1.5">Time</p>
+              <p className="text-[10px] text-gray-700 tracking-widests uppercase mb-1.5">Time</p>
               <input type="time" value={form.time} onChange={(e) => set("time", e.target.value)} className={inputCls + " [color-scheme:dark]"} />
             </div>
           </div>
           {form.date && (
             <p className="text-[10px] text-[#F2AA00]/60">
-              {new Date(`${form.date}T${form.time}:00`).toLocaleString("en-IN", {
-                weekday: "short", day: "numeric", month: "short", year: "numeric",
-                hour: "2-digit", minute: "2-digit", hour12: true,
+              {"IST " + new Date(`${form.date}T${form.time}:00`).toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata", weekday: "short", day: "numeric",
+                month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true,
               })}
             </p>
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Total Slots">
-            <input type="number" value={form.slots} onChange={(e) => set("slots", Number(e.target.value))} className={inputCls} />
-          </Field>
-          <Field label="Prize Pool (₹)">
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-md">₹</span>
-              <input value={form.prizePool} onChange={(e) => set("prizePool", e.target.value)} placeholder="0" className={inputCls + " pl-7"} />
-            </div>
-          </Field>
-        </div>
+        <Field label="Prize Pool (₹)">
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-md">₹</span>
+            <input value={form.prizePool} onChange={(e) => set("prizePool", e.target.value)} placeholder="0" className={inputCls + " pl-7"} />
+          </div>
+        </Field>
 
         {form.status === "Live" && (
           <div className="flex items-start gap-2.5 bg-[#F2AA00]/5 border border-[#F2AA00]/20 rounded-xl px-4 py-3">
@@ -450,10 +491,10 @@ function TournamentFormModal({ initial, title, onSave, onClose }: {
         )}
 
         <div className="flex gap-3 pt-1">
-          <button onClick={onClose} className="flex-1 border border-gray-800 text-gray-400 py-2.5 text-md tracking-widest rounded-lg hover:border-gray-700 hover:text-white transition-all duration-150">Cancel</button>
+          <button onClick={onClose} className="flex-1 border border-gray-800 text-gray-400 py-2.5 text-md tracking-widests rounded-lg hover:border-gray-700 hover:text-white transition-all duration-150">Cancel</button>
           <button
             onClick={() => valid && onSave(form)}
-            className={`flex-1 py-2.5 text-md tracking-widest rounded-lg border transition-all duration-150 active:scale-[0.97] ${valid ? "bg-[#F2AA00] text-black border-[#F2AA00] hover:bg-[#e09e00] hover:shadow-lg hover:shadow-[#F2AA00]/20" : "bg-gray-800/40 text-gray-600 border-gray-800 cursor-not-allowed"}`}
+            className={`flex-1 py-2.5 text-md tracking-widests rounded-lg border transition-all duration-150 active:scale-[0.97] ${valid ? "bg-[#F2AA00] text-black border-[#F2AA00] hover:bg-[#e09e00] hover:shadow-lg hover:shadow-[#F2AA00]/20" : "bg-gray-800/40 text-gray-600 border-gray-800 cursor-not-allowed"}`}
           >
             {title === "Create Tournament" ? "Create" : "Save Changes"}
           </button>
@@ -476,8 +517,8 @@ function DeleteModal({ name, onConfirm, onCancel }: { name: string; onConfirm: (
           You're about to delete <span className="text-white">"{name}"</span>. This action cannot be undone.
         </p>
         <div className="flex gap-3 mt-5">
-          <button onClick={onCancel} className="flex-1 border border-gray-800 text-gray-400 py-2 text-md tracking-widest rounded-lg hover:border-gray-700 hover:text-white transition-all duration-150">Cancel</button>
-          <button onClick={onConfirm} className="flex-1 bg-red-500/10 border border-red-500/30 text-red-400 py-2 text-md tracking-widest rounded-lg hover:bg-red-500/20 active:scale-[0.97] transition-all duration-150">Delete</button>
+          <button onClick={onCancel} className="flex-1 border border-gray-800 text-gray-400 py-2 text-md tracking-widests rounded-lg hover:border-gray-700 hover:text-white transition-all duration-150">Cancel</button>
+          <button onClick={onConfirm} className="flex-1 bg-red-500/10 border border-red-500/30 text-red-400 py-2 text-md tracking-widests rounded-lg hover:bg-red-500/20 active:scale-[0.97] transition-all duration-150">Delete</button>
         </div>
       </div>
     </Overlay>
@@ -485,10 +526,7 @@ function DeleteModal({ name, onConfirm, onCancel }: { name: string; onConfirm: (
 }
 
 // ── DEFAULT FEES CARD ──────────────────────────────────────
-// Shown inline on the tournament page — saves to localStorage
-// so new tournaments always pre-fill with the latest defaults.
 type DefaultFees = { feeSolo: number; feeDuo: number; feeSquad: number };
-
 const LS_KEY = "tournament_default_fees";
 
 function loadDefaultFees(): DefaultFees {
@@ -500,34 +538,17 @@ function loadDefaultFees(): DefaultFees {
   return FACTORY_DEFAULTS;
 }
 
-function DefaultFeesCard({
-  defaults,
-  onSave,
-}: {
-  defaults: DefaultFees;
-  onSave: (d: DefaultFees) => void;
-}) {
-  const [open,    setOpen]    = useState(false);
-  const [draft,   setDraft]   = useState<DefaultFees>(defaults);
-  const [saved,   setSaved]   = useState(false);
+function DefaultFeesCard({ defaults, onSave }: { defaults: DefaultFees; onSave: (d: DefaultFees) => void }) {
+  const [open,  setOpen]  = useState(false);
+  const [draft, setDraft] = useState<DefaultFees>(defaults);
+  const [saved, setSaved] = useState(false);
 
-  // sync draft when parent defaults change (e.g. on first load)
   useEffect(() => { setDraft(defaults); }, [defaults]);
 
-  const isDirty =
-    draft.feeSolo  !== defaults.feeSolo  ||
-    draft.feeDuo   !== defaults.feeDuo   ||
-    draft.feeSquad !== defaults.feeSquad;
+  const isDirty = draft.feeSolo !== defaults.feeSolo || draft.feeDuo !== defaults.feeDuo || draft.feeSquad !== defaults.feeSquad;
 
-  const handleSave = () => {
-    onSave(draft);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const handleReset = () => {
-    setDraft(FACTORY_DEFAULTS);
-  };
+  const handleSave = () => { onSave(draft); setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const handleReset = () => { setDraft(FACTORY_DEFAULTS); };
 
   const modes = [
     { key: "feeSolo"  as const, label: "Solo",  color: "text-blue-400",   border: "border-blue-500/20",   bg: "bg-blue-500/5"   },
@@ -537,84 +558,50 @@ function DefaultFeesCard({
 
   return (
     <div className="bg-[#0b0b0b] border border-gray-800 rounded-xl overflow-hidden transition-colors duration-200 hover:border-gray-700">
-
-      {/* ── collapsed header — always visible ── */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-5 py-3.5 text-left"
-      >
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between px-5 py-3.5 text-left">
         <div className="flex items-center gap-3">
           <div className="w-7 h-7 rounded-lg bg-[#F2AA00]/10 flex items-center justify-center flex-shrink-0">
             <FontAwesomeIcon icon={faCoins} className="text-[#F2AA00] text-[10px]" />
           </div>
           <div>
             <p className="text-md text-white tracking-wide">Default Entry Fees</p>
-            <p className="text-[10px] text-gray-600 mt-0.5 tracking-wide">
-              Auto-filled when creating new tournaments
-            </p>
+            <p className="text-[10px] text-gray-600 mt-0.5 tracking-wide">Auto-filled when creating new tournaments</p>
           </div>
         </div>
-
         <div className="flex items-center gap-4">
-          {/* preview pills — always visible */}
           <div className="hidden sm:flex items-center gap-2">
             {modes.map(({ key, label, color }) => (
               <span key={key} className="text-[10px] font-mono tracking-wide">
                 <span className="text-gray-600">{label} </span>
-                <span className={color}>₹{defaults[key]}</span>
+                {/* ✅ FIX #7: Guard defaults display */}
+                <span className={color}>₹{defaults[key] ?? FACTORY_DEFAULTS[key]}</span>
               </span>
             ))}
           </div>
-          <FontAwesomeIcon
-            icon={open ? faChevronUp : faChevronDown}
-            className="text-gray-600 text-[10px] transition-transform duration-200"
-          />
+          <FontAwesomeIcon icon={open ? faChevronUp : faChevronDown} className="text-gray-600 text-[10px] transition-transform duration-200" />
         </div>
       </button>
 
-      {/* ── expanded editor ── */}
       {open && (
         <div className="border-t border-gray-800 px-5 py-4 space-y-4">
-
-          <p className="text-md text-gray-500 leading-relaxed">
-            These values pre-fill the fees when you create a new tournament.
-            Each tournament can still be customised individually after creation.
-          </p>
-
-          {/* Fee inputs */}
+          <p className="text-md text-gray-500 leading-relaxed">These values pre-fill the fees when you create a new tournament. Each tournament can still be customised individually after creation.</p>
           <div className="grid grid-cols-3 gap-3">
             {modes.map(({ key, label, color, border, bg }) => (
               <div key={key} className={`rounded-xl border ${border} ${bg} p-3`}>
-                <p className={`text-[10px] tracking-widest uppercase mb-2 ${color}`}>{label}</p>
+                <p className={`text-[10px] tracking-widests uppercase mb-2 ${color}`}>{label}</p>
                 <div className="relative">
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 text-md">₹</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={draft[key]}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, [key]: Math.max(0, Number(e.target.value)) }))
-                    }
-                    className={`w-full bg-black/60 border rounded-lg pl-6 pr-2 py-2 text-md font-mono outline-none transition-colors ${
-                      draft[key] !== defaults[key]
-                        ? `${border} ${color}`
-                        : "border-gray-800 text-white"
-                    } focus:border-[#F2AA00]/40`}
+                  <input type="number" min={0} value={draft[key]}
+                    onChange={(e) => setDraft((d) => ({ ...d, [key]: Math.max(0, Number(e.target.value)) }))}
+                    className={`w-full bg-black/60 border rounded-lg pl-6 pr-2 py-2 text-md font-mono outline-none transition-colors ${draft[key] !== defaults[key] ? `${border} ${color}` : "border-gray-800 text-white"} focus:border-[#F2AA00]/40`}
                   />
                 </div>
                 {draft[key] !== FACTORY_DEFAULTS[key] && (
-                  <button
-                    onClick={() => setDraft((d) => ({ ...d, [key]: FACTORY_DEFAULTS[key] }))}
-                    className="text-md text-gray-700 hover:text-gray-500 mt-1.5 tracking-widest transition-colors"
-                  >
-                    reset to ₹{FACTORY_DEFAULTS[key]}
-                  </button>
+                  <button onClick={() => setDraft((d) => ({ ...d, [key]: FACTORY_DEFAULTS[key] }))} className="text-md text-gray-700 hover:text-gray-500 mt-1.5 tracking-widests transition-colors">reset to ₹{FACTORY_DEFAULTS[key]}</button>
                 )}
               </div>
             ))}
           </div>
-
-          {/* Change summary */}
           {isDirty && (
             <div className="flex flex-wrap gap-2 text-[10px]">
               {modes.map(({ key, label, color }) =>
@@ -629,40 +616,17 @@ function DefaultFeesCard({
               )}
             </div>
           )}
-
-          {/* Actions */}
           <div className="flex items-center gap-2 pt-1">
-            <button
-              onClick={handleReset}
-              disabled={
-                draft.feeSolo  === FACTORY_DEFAULTS.feeSolo &&
-                draft.feeDuo   === FACTORY_DEFAULTS.feeDuo  &&
-                draft.feeSquad === FACTORY_DEFAULTS.feeSquad
-              }
-              className="flex items-center gap-1.5 px-3 py-2 text-[10px] tracking-widest rounded-lg border border-gray-800 text-gray-500 hover:border-gray-700 hover:text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-150"
-            >
-              <FontAwesomeIcon icon={faRotateLeft} className="text-md" />
-              Reset all
+            <button onClick={handleReset}
+              disabled={draft.feeSolo === FACTORY_DEFAULTS.feeSolo && draft.feeDuo === FACTORY_DEFAULTS.feeDuo && draft.feeSquad === FACTORY_DEFAULTS.feeSquad}
+              className="flex items-center gap-1.5 px-3 py-2 text-[10px] tracking-widests rounded-lg border border-gray-800 text-gray-500 hover:border-gray-700 hover:text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-150">
+              <FontAwesomeIcon icon={faRotateLeft} className="text-md" />Reset all
             </button>
-
-            <button
-              onClick={handleSave}
-              disabled={!isDirty}
-              className={`flex items-center gap-1.5 px-4 py-2 text-[10px] tracking-widest rounded-lg border transition-all duration-150 active:scale-[0.97] ${
-                saved
-                  ? "bg-green-500/10 border-green-500/30 text-green-400"
-                  : isDirty
-                  ? "bg-[#F2AA00] text-black border-[#F2AA00] hover:bg-[#e09e00]"
-                  : "bg-gray-900 border-gray-800 text-gray-600 cursor-not-allowed"
-              }`}
-            >
-              <FontAwesomeIcon icon={faFloppyDisk} className="text-md" />
-              {saved ? "Saved!" : "Save defaults"}
+            <button onClick={handleSave} disabled={!isDirty}
+              className={`flex items-center gap-1.5 px-4 py-2 text-[10px] tracking-widests rounded-lg border transition-all duration-150 active:scale-[0.97] ${saved ? "bg-green-500/10 border-green-500/30 text-green-400" : isDirty ? "bg-[#F2AA00] text-black border-[#F2AA00] hover:bg-[#e09e00]" : "bg-gray-900 border-gray-800 text-gray-600 cursor-not-allowed"}`}>
+              <FontAwesomeIcon icon={faFloppyDisk} className="text-md" />{saved ? "Saved!" : "Save defaults"}
             </button>
-
-            <span className="text-md text-gray-700 ml-auto tracking-wide">
-              Stored in browser · affects new tournaments only
-            </span>
+            <span className="text-md text-gray-700 ml-auto tracking-wide">Stored in browser · affects new tournaments only</span>
           </div>
         </div>
       )}
@@ -690,9 +654,7 @@ export default function AdminTournaments() {
   const [toast,        setToast]        = useState({ msg: "", show: false });
   const [defaultFees,  setDefaultFees]  = useState<DefaultFees>(FACTORY_DEFAULTS);
 
-  // Load saved defaults from localStorage on mount
   useEffect(() => { setDefaultFees(loadDefaultFees()); }, []);
-
   useEffect(() => { fetchTournaments(); }, []);
   useEffect(() => {
     const t1 = setTimeout(() => setVisible(true), 60);
@@ -705,15 +667,15 @@ export default function AdminTournaments() {
     setTimeout(() => setToast({ msg: "", show: false }), 2500);
   };
 
+  // ✅ FIX #2: Ensure all API fields have defaults
   const fetchTournaments = async () => {
     try {
       const res  = await fetch("/api/admin/tournaments", { cache: "no-store" });
       if (!res.ok) throw new Error("API failed");
       const data = await res.json();
       const formatted: Tournament[] = data.map((t: any) => {
-        const raw = t.start_date ?? "";
-        const mode = capitalize(t.mode);
-        // derive active fee from per-mode fees
+        const raw      = t.start_date ?? "";
+        const mode     = capitalize(t.mode);
         const feeSolo  = t.fee_solo  ?? DEFAULT_FEES.feeSolo;
         const feeDuo   = t.fee_duo   ?? DEFAULT_FEES.feeDuo;
         const feeSquad = t.fee_squad ?? DEFAULT_FEES.feeSquad;
@@ -727,8 +689,7 @@ export default function AdminTournaments() {
           map:      t.map,
           mode,
           platform: t.game === "PUBG" ? "PUBG" : "BGMI",
-          slots:    t.total_slots,
-          // Fix: count registrations not players
+          slots:    t.total_slots  ?? 0,
           filled:   t.filled_slots ?? t._count?.registrations ?? 0,
           fee:      activeEntryFee === 0 ? "Free" : `₹${activeEntryFee}`,
           status:   capitalize(t.status),
@@ -739,7 +700,14 @@ export default function AdminTournaments() {
           feeSolo,
           feeDuo,
           feeSquad,
-          prizePool: Number(t.prize_pool) || 0,
+          slotsSolo:   t.slots_solo   ?? 0,
+          slotsDuo:    t.slots_duo    ?? 0,
+          slotsSquad:  t.slots_squad  ?? 0,
+          // ✅ FIX: Add explicit defaults for filled_* fields
+          filledSolo:  t.filled_solo  ?? 0,
+          filledDuo:   t.filled_duo   ?? 0,
+          filledSquad: t.filled_squad ?? 0,
+          prizePool:   Number(t.prize_pool) || 0,
         };
       });
       setTournaments(formatted);
@@ -752,36 +720,40 @@ export default function AdminTournaments() {
     showToast("Default fees updated ✓");
   };
 
-  // emptyForm always uses current defaultFees
   const buildEmptyForm = (): FormData => ({
     name: "", map: "Erangel", mode: "Squad", platform: "BGMI",
-    slots: 100, fee: String(defaultFees.feeSquad),
-    feeSolo:  defaultFees.feeSolo,
-    feeDuo:   defaultFees.feeDuo,
-    feeSquad: defaultFees.feeSquad,
+    slotsSolo: 100, slotsDuo: 50, slotsSquad: 25,
+    fee: String(defaultFees.feeSquad),
+    feeSolo: defaultFees.feeSolo, feeDuo: defaultFees.feeDuo, feeSquad: defaultFees.feeSquad,
     status: "Open", date: "", time: "18:00", prizePool: "0",
   });
+
+  // ✅ FIX #1: buildPayload explicitly sends filled_* as 0
   const buildPayload = (data: FormData) => ({
-    title:       data.name,
-    game:        data.platform === "PUBG" ? "PUBG" : "BGMI",
-    mode:        data.mode.toLowerCase(),
-    map:         data.map,
-    entry_fee:   activeFee(data),   // active mode fee as the main entry_fee
-    fee_solo:    data.feeSolo,
-    fee_duo:     data.feeDuo,
-    fee_squad:   data.feeSquad,
-    prize_pool:  Number(data.prizePool) || 0,
-    total_slots: data.slots,
-    start_date:  toISO(data.date, data.time),
-    status:      data.status.toLowerCase(),
+    title:         data.name,
+    game:          data.platform === "PUBG" ? "PUBG" : "BGMI",
+    mode:          data.mode.toLowerCase(),
+    map:           data.map,
+    entry_fee:     activeFee(data),
+    fee_solo:      data.feeSolo,
+    fee_duo:       data.feeDuo,
+    fee_squad:     data.feeSquad,
+    prize_pool:    Number(data.prizePool) || 0,
+    slots_solo:    data.slotsSolo,
+    slots_duo:     data.slotsDuo,
+    slots_squad:   data.slotsSquad,
+    // ✅ FIX: Explicitly initialize filled counters
+    filled_solo:   0,
+    filled_duo:    0,
+    filled_squad:  0,
+    start_date:    toISO(data.date, data.time),
+    status:        data.status.toLowerCase(),
   });
 
   const handleCreate = async (data: FormData) => {
     try {
       await authFetch("/api/admin/tournaments", { method: "POST", body: JSON.stringify(buildPayload(data)) });
-      await fetchTournaments();
-      setModal(null);
-      showToast("Tournament created ✓");
+      await fetchTournaments(); setModal(null); showToast("Tournament created ✓");
     } catch (err) { console.error(err); }
   };
 
@@ -789,18 +761,14 @@ export default function AdminTournaments() {
     if (modal?.type !== "edit") return;
     try {
       await authFetch(`/api/admin/tournaments/${modal.tournament.id}`, { method: "PUT", body: JSON.stringify(buildPayload(data)) });
-      await fetchTournaments();
-      setModal(null);
-      showToast("Tournament updated ✓");
+      await fetchTournaments(); setModal(null); showToast("Tournament updated ✓");
     } catch (err) { console.error(err); }
   };
 
   const handleDelete = async (id: number) => {
     try {
       await authFetch(`/api/admin/tournaments/${id}`, { method: "DELETE" });
-      await fetchTournaments();
-      setModal(null);
-      showToast("Tournament deleted");
+      await fetchTournaments(); setModal(null); showToast("Tournament deleted");
     } catch (err) { console.error(err); }
   };
 
@@ -808,9 +776,7 @@ export default function AdminTournaments() {
     if (modal?.type !== "room") return;
     try {
       await authFetch(`/api/admin/tournaments/${modal.tournament.id}`, { method: "PUT", body: JSON.stringify({ room_id: roomId, room_pass: roomPass }) });
-      await fetchTournaments();
-      setModal(null);
-      showToast("Room info saved ✓");
+      await fetchTournaments(); setModal(null); showToast("Room info saved ✓");
     } catch (err) { console.error(err); }
   };
 
@@ -832,7 +798,8 @@ export default function AdminTournaments() {
   return (
     <div className="bg-black min-h-screen text-white px-4 sm:px-6 py-10">
 
-      <div className={`fixed bottom-6 right-6 z-50 bg-[#F2AA00] text-black text-md px-5 py-3 rounded-lg shadow-lg shadow-[#F2AA00]/20 tracking-widest transition-all duration-500 ${toast.show ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6 pointer-events-none"}`}>
+      {/* TOAST */}
+      <div className={`fixed bottom-6 right-6 z-50 bg-[#F2AA00] text-black text-md px-5 py-3 rounded-lg shadow-lg shadow-[#F2AA00]/20 tracking-widests transition-all duration-500 ${toast.show ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6 pointer-events-none"}`}>
         {toast.msg}
       </div>
 
@@ -854,17 +821,19 @@ export default function AdminTournaments() {
           <TournamentFormModal
             title="Edit Tournament"
             initial={{
-              name:      modal.tournament.name,
-              map:       modal.tournament.map,
-              mode:      modal.tournament.mode,
-              platform:  modal.tournament.platform,
-              slots:     modal.tournament.slots,
-              fee:       String(modal.tournament.feeSolo),
-              feeSolo:   modal.tournament.feeSolo,
-              feeDuo:    modal.tournament.feeDuo,
-              feeSquad:  modal.tournament.feeSquad,
-              status:    modal.tournament.status,
-              prizePool: String(modal.tournament.prizePool),
+              name:       modal.tournament.name ?? "",
+              map:        modal.tournament.map ?? "Erangel",
+              mode:       modal.tournament.mode ?? "Squad",
+              platform:   modal.tournament.platform ?? "BGMI",
+              slotsSolo:  modal.tournament.slotsSolo ?? 0,
+              slotsDuo:   modal.tournament.slotsDuo ?? 0,
+              slotsSquad: modal.tournament.slotsSquad ?? 0,
+              fee:        String(modal.tournament.feeSolo ?? 0),
+              feeSolo:    modal.tournament.feeSolo ?? DEFAULT_FEES.feeSolo,
+              feeDuo:     modal.tournament.feeDuo ?? DEFAULT_FEES.feeDuo,
+              feeSquad:   modal.tournament.feeSquad ?? DEFAULT_FEES.feeSquad,
+              status:     modal.tournament.status ?? "Open",
+              prizePool:  String(modal.tournament.prizePool ?? 0),
               date, time,
             }}
             onSave={handleEdit}
@@ -881,15 +850,12 @@ export default function AdminTournaments() {
         {/* HEADER */}
         <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-3"}`}>
           <div>
-            <h1 className="text-xl tracking-widest text-white">Manage Tournaments</h1>
+            <h1 className="text-xl tracking-widests text-white">Manage Tournaments</h1>
             <p className="text-gray-600 text-md mt-1 tracking-wide">{total} tournaments total</p>
           </div>
-          <button
-            onClick={() => setModal({ type: "create" })}
-            className="self-start sm:self-auto bg-[#F2AA00] text-black px-5 py-2.5 text-md tracking-widest rounded-lg hover:bg-[#e09e00] hover:shadow-lg hover:shadow-[#F2AA00]/20 active:scale-[0.97] transition-all duration-150 flex items-center gap-2"
-          >
-            <FontAwesomeIcon icon={faPlus} className="text-md" />
-            Create Tournament
+          <button onClick={() => setModal({ type: "create" })}
+            className="self-start sm:self-auto bg-[#F2AA00] text-black px-5 py-2.5 text-md tracking-widests rounded-lg hover:bg-[#e09e00] hover:shadow-lg hover:shadow-[#F2AA00]/20 active:scale-[0.97] transition-all duration-150 flex items-center gap-2">
+            <FontAwesomeIcon icon={faPlus} className="text-md" />Create Tournament
           </button>
         </div>
 
@@ -908,7 +874,7 @@ export default function AdminTournaments() {
             { label: "Closed", value: closed, color: "text-gray-500"  },
           ].map((s, i) => (
             <div key={i} className="bg-[#0b0b0b] border border-gray-800 rounded-xl px-4 py-3 hover:border-gray-700 transition-colors duration-200">
-              <p className="text-gray-600 text-md tracking-widest uppercase">{s.label}</p>
+              <p className="text-gray-600 text-md tracking-widests uppercase">{s.label}</p>
               <p className={`text-xl mt-1 font-mono ${s.color}`}>{s.value}</p>
             </div>
           ))}
@@ -938,22 +904,29 @@ export default function AdminTournaments() {
         {/* TABLE */}
         <div className={`bg-[#0b0b0b] border border-gray-800 rounded-xl overflow-hidden transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`} style={{ transitionDelay: "240ms" }}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px]">
+            <table className="w-full min-w-[900px]">
               <thead>
                 <tr className="border-b border-gray-800 bg-[#0f0f0f]">
-                  {["Tournament", "Start", "Platform", "Mode", "Fees (S/D/Q)", "Slots", "Status", "Room", "Actions"].map((h) => (
-                    <th key={h} className="text-md text-gray-600 tracking-widest px-4 py-3 text-left font-normal">{h}</th>
+                  {["Tournament", "Start", "Platform", "Mode", "Fees (S/D/Q)", "Slots (S/D/Q)", "Status", "Room", "Actions"].map((h) => (
+                    <th key={h} className="text-md text-gray-600 tracking-widests px-4 py-3 text-left font-normal">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-14 text-gray-700 text-md tracking-widest">No tournaments match your filters.</td>
+                    <td colSpan={9} className="text-center py-14 text-gray-700 text-md tracking-widests">No tournaments match your filters.</td>
                   </tr>
                 ) : filtered.map((t, i) => {
-                  const percent = t.slots > 0 ? Math.round((t.filled / t.slots) * 100) : 0;
-                  const isLive  = t.status === "Live";
+                  const totalSlots  = t.slotsSolo + t.slotsDuo + t.slotsSquad;
+                  const totalFilled = (t.filledSolo ?? 0) + (t.filledDuo ?? 0) + (t.filledSquad ?? 0);
+                  const percent     = totalSlots > 0 ? Math.round((totalFilled / totalSlots) * 100) : 0;
+                  const isLive      = t.status === "Live";
+
+                  // active mode slot info
+                  const modeSlots  = t.mode === "Solo" ? t.slotsSolo  : t.mode === "Duo" ? t.slotsDuo  : t.slotsSquad;
+                  const modeFilled = t.mode === "Solo" ? t.filledSolo : t.mode === "Duo" ? t.filledDuo : t.filledSquad;
+
                   return (
                     <tr key={t.id}
                       className={`border-b border-gray-800/50 last:border-0 hover:bg-[#111] group transition-all duration-300 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}`}
@@ -976,7 +949,7 @@ export default function AdminTournaments() {
                       <td className="px-4 py-3.5">
                         <span className="text-md px-2 py-0.5 rounded-md bg-[#F2AA00]/10 text-[#F2AA00] border border-[#F2AA00]/10">{t.mode}</span>
                       </td>
-                      {/* FEES — shows all 3, highlights active */}
+                      {/* FEES */}
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1 text-md font-mono">
                           <span className={t.mode === "Solo"  ? "text-[#F2AA00]" : "text-gray-600"}>₹{t.feeSolo}</span>
@@ -985,20 +958,53 @@ export default function AdminTournaments() {
                           <span className="text-gray-800">/</span>
                           <span className={t.mode === "Squad" ? "text-[#F2AA00]" : "text-gray-600"}>₹{t.feeSquad}</span>
                         </div>
-                        <p className="text-md text-gray-700 mt-0.5 tracking-widest">solo/duo/squad</p>
+                        <p className="text-md text-gray-700 mt-0.5 tracking-widests">solo/duo/squad</p>
                       </td>
-                      {/* SLOTS */}
+
+                      {/* SLOTS — per-mode breakdown with IMPROVED SIZING */}
                       <td className="px-4 py-3.5">
-                        <div className="flex flex-col gap-1 w-20">
-                          <div className="flex justify-between text-md text-gray-600">
-                            <span>{t.filled}</span><span>{t.slots}</span>
-                          </div>
-                          <div className="h-[3px] bg-gray-800 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full transition-all duration-700 ${percent === 100 ? "bg-red-500" : "bg-[#F2AA00]"}`}
-                              style={{ width: barsActive ? `${percent}%` : "0%", transitionDelay: `${i * 50}ms` }} />
+                        <div className="space-y-1.5 w-56">
+                          {/* Solo */}
+                          {t.slotsSolo > 0 && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-blue-400/70 w-8 tracking-widests">S</span>
+                              <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all duration-700 ${(t.filledSolo ?? 0) >= t.slotsSolo ? "bg-red-500" : "bg-blue-400"}`}
+                                  style={{ width: barsActive ? `${Math.round(((t.filledSolo ?? 0) / t.slotsSolo) * 100)}%` : "0%", transitionDelay: `${i * 50}ms` }} />
+                              </div>
+                              <span className="text-xs text-gray-400 font-mono  w-16 text-right">{t.filledSolo ?? 0}/{t.slotsSolo}</span>
+                            </div>
+                          )}
+                          {/* Duo */}
+                          {t.slotsDuo > 0 && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-purple-400/70 w-8 tracking-widests ">D</span>
+                              <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all duration-700 ${(t.filledDuo ?? 0) >= t.slotsDuo ? "bg-red-500" : "bg-purple-400"}`}
+                                  style={{ width: barsActive ? `${Math.round(((t.filledDuo ?? 0) / t.slotsDuo) * 100)}%` : "0%", transitionDelay: `${i * 50 + 50}ms` }} />
+                              </div>
+                              <span className="text-xs text-gray-400 font-mono  w-16 text-right">{t.filledDuo ?? 0}/{t.slotsDuo}</span>
+                            </div>
+                          )}
+                          {/* Squad */}
+                          {t.slotsSquad > 0 && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-[#F2AA00]/70 w-8 tracking-widests ">SQ</span>
+                              <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all duration-700 ${(t.filledSquad ?? 0) >= t.slotsSquad ? "bg-red-500" : "bg-[#F2AA00]"}`}
+                                  style={{ width: barsActive ? `${Math.round(((t.filledSquad ?? 0) / t.slotsSquad) * 100)}%` : "0%", transitionDelay: `${i * 50 + 100}ms` }} />
+                              </div>
+                              <span className="text-xs text-gray-400 font-mono  w-16 text-right">{t.filledSquad ?? 0}/{t.slotsSquad}</span>
+                            </div>
+                          )}
+                          {/* Total */}
+                          <div className="flex justify-between items-center text-xs text-gray-600 pt-1 border-t border-gray-800/60 mt-1.5">
+                            <span className="">TOTAL</span>
+                            <span className="font-mono ">{(t.filledSolo ?? 0) + (t.filledDuo ?? 0) + (t.filledSquad ?? 0)}/{t.slotsSolo + t.slotsDuo + t.slotsSquad}</span>
                           </div>
                         </div>
                       </td>
+
                       {/* STATUS */}
                       <td className="px-4 py-3.5">
                         <span className={`text-md px-2.5 py-1 rounded-md border flex items-center gap-1.5 w-fit ${statusStyle[t.status]}`}>
@@ -1019,15 +1025,9 @@ export default function AdminTournaments() {
                       {/* ACTIONS */}
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1.5">
-                          <button onClick={() => setModal({ type: "view",   tournament: t })} title="View"   className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-800 text-gray-500 hover:border-gray-600 hover:text-white transition-all duration-150">
-                            <FontAwesomeIcon icon={faEye}   className="text-[10px]" />
-                          </button>
-                          <button onClick={() => setModal({ type: "edit",   tournament: t })} title="Edit"   className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-800 text-gray-500 hover:border-[#F2AA00]/50 hover:text-[#F2AA00] transition-all duration-150">
-                            <FontAwesomeIcon icon={faPen}   className="text-[10px]" />
-                          </button>
-                          <button onClick={() => setModal({ type: "delete", tournament: t })} title="Delete" className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-800 text-gray-500 hover:border-red-500/40 hover:text-red-400 transition-all duration-150">
-                            <FontAwesomeIcon icon={faTrash} className="text-[10px]" />
-                          </button>
+                          <button onClick={() => setModal({ type: "view",   tournament: t })} title="View"   className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-800 text-gray-500 hover:border-gray-600 hover:text-white transition-all duration-150"><FontAwesomeIcon icon={faEye}   className="text-[10px]" /></button>
+                          <button onClick={() => setModal({ type: "edit",   tournament: t })} title="Edit"   className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-800 text-gray-500 hover:border-[#F2AA00]/50 hover:text-[#F2AA00] transition-all duration-150"><FontAwesomeIcon icon={faPen}   className="text-[10px]" /></button>
+                          <button onClick={() => setModal({ type: "delete", tournament: t })} title="Delete" className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-800 text-gray-500 hover:border-red-500/40 hover:text-red-400 transition-all duration-150"><FontAwesomeIcon icon={faTrash} className="text-[10px]" /></button>
                         </div>
                       </td>
                     </tr>

@@ -23,7 +23,7 @@ export default function Footer() {
             <a href="https://youtube.com/@kingopislive-pubg" target="_blank" rel="noreferrer">
               <FaYoutube className="hover:text-red-500 cursor-pointer transition-colors" />
             </a>
-            <a href="https://wa.me/917418270710" target="_blank" rel="noreferrer">
+            <a href="https://wa.me/971588340270" target="_blank" rel="noreferrer">
               <FaWhatsapp className="hover:text-green-500 cursor-pointer transition-colors" />
             </a>
           </div>

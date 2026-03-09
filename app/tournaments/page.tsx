@@ -61,7 +61,7 @@ function TournamentsContent() {
     window.history.replaceState(null, "", `?${newParams.toString()}`);
   };
 
-  const DATE_FILTERS = ["All", "Today", "Tomorrow", "This Week", "Next Week"];
+
   const MODE_FILTERS = [
     { key: "all",   label: "All Modes" },
     { key: "solo",  label: "Solo"      },
@@ -101,20 +101,6 @@ function TournamentsContent() {
               style={{ transitionDelay: `${i * 40}ms` }}
             >
               {m.label}
-            </button>
-          ))}
-        </div>
-
-        {/* DATE FILTER PILLS */}
-        <div className={`flex flex-wrap gap-2 mb-6 transition-all duration-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`} style={{ transitionDelay: "80ms" }}>
-          {DATE_FILTERS.map((f, i) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-4 py-1.5 text-xs tracking-wider border rounded-lg transition-all duration-200 ${filter === f ? "bg-white/10 text-white border-gray-600" : "border-gray-800 text-gray-500 hover:border-gray-700 hover:text-gray-400"}`}
-              style={{ transitionDelay: `${i * 40}ms` }}
-            >
-              {f}
             </button>
           ))}
         </div>
@@ -166,12 +152,12 @@ function TournamentsContent() {
                         <td className="px-5 py-4 text-md text-gray-400 tracking-wide whitespace-nowrap">{t.dateLabel}</td>
 
                         {/* TIME */}
-                        <td className="px-5 py-4 text-md text-gray-400 font-mono whitespace-nowrap">{"IST " + t.timeLabel}</td>
+                        <td className="px-5 py-4 text-md text-gray-400 font-mono whitespace-nowrap">{t.timeLabel + " IST" }</td>
 
                         {/* PLATFORM */}
                         <td className="px-5 py-4">
                           <div className="flex items-center justify-center gap-1.5">
-                            <span className="text-md text-gray-400 tracking-wide">{t.platform === "Mobile" ? "BGMI" : "PUBG"}</span>
+                            <span className="text-md text-gray-400 tracking-wide">{t.platform === "BGMI" ? "BGMI" : "PUBG"}</span>
                           </div>
                         </td>
 

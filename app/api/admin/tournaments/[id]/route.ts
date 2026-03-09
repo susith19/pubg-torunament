@@ -5,6 +5,26 @@ import { prisma } from "@/lib/prisma";
 // ── HELPERS ──────────────────────────────────────────────
 const normalizeStatus = (s: string) => (s ?? "open").toLowerCase();
 
+// ✅ FIX #3: Type-safe field selection for per-mode slots
+type ModeField = 'filled_solo' | 'filled_duo' | 'filled_squad';
+type SlotField = 'slots_solo' | 'slots_duo' | 'slots_squad';
+
+const getModeField = (mode: string | null): ModeField => {
+  switch ((mode ?? '').toLowerCase()) {
+    case 'solo':  return 'filled_solo';
+    case 'duo':   return 'filled_duo';
+    default:      return 'filled_squad';
+  }
+};
+
+const getSlotField = (mode: string | null): SlotField => {
+  switch ((mode ?? '').toLowerCase()) {
+    case 'solo':  return 'slots_solo';
+    case 'duo':   return 'slots_duo';
+    default:      return 'slots_squad';
+  }
+};
+
 // ── UPDATE ───────────────────────────────────────────────
 export async function PUT(
   req: NextRequest,
@@ -15,23 +35,23 @@ export async function PUT(
 
   try {
     const { id } = await context.params;
-    const body   = await req.json();
+    const body = await req.json();
 
     const data: Record<string, any> = {};
 
-    if (body.title       !== undefined) data.title       = body.title;
-    if (body.game        !== undefined) data.game        = body.game;
-    if (body.mode        !== undefined) data.mode        = body.mode;
-    if (body.map         !== undefined) data.map         = body.map;
-    if (body.entry_fee   !== undefined) data.entry_fee   = body.entry_fee;
-    if (body.fee_solo    !== undefined) data.fee_solo    = body.fee_solo;
-    if (body.fee_duo     !== undefined) data.fee_duo     = body.fee_duo;
-    if (body.fee_squad   !== undefined) data.fee_squad   = body.fee_squad;
-    if (body.prize_pool  !== undefined) data.prize_pool  = body.prize_pool;
+    if (body.title !== undefined) data.title = body.title;
+    if (body.game !== undefined) data.game = body.game;
+    if (body.mode !== undefined) data.mode = body.mode;
+    if (body.map !== undefined) data.map = body.map;
+    if (body.entry_fee !== undefined) data.entry_fee = body.entry_fee;
+    if (body.fee_solo !== undefined) data.fee_solo = body.fee_solo;
+    if (body.fee_duo !== undefined) data.fee_duo = body.fee_duo;
+    if (body.fee_squad !== undefined) data.fee_squad = body.fee_squad;
+    if (body.prize_pool !== undefined) data.prize_pool = body.prize_pool;
     if (body.total_slots !== undefined) data.total_slots = body.total_slots;
-    if (body.status      !== undefined) data.status      = normalizeStatus(body.status);
-    if (body.room_id     !== undefined) data.room_id     = body.room_id;
-    if (body.room_pass   !== undefined) data.room_pass   = body.room_pass;
+    if (body.status !== undefined) data.status = normalizeStatus(body.status);
+    if (body.room_id !== undefined) data.room_id = body.room_id;
+    if (body.room_pass !== undefined) data.room_pass = body.room_pass;
 
     if (body.start_date !== undefined) {
       const date = new Date(body.start_date);
@@ -40,8 +60,70 @@ export async function PUT(
       data.start_date = date;
     }
 
+    // ✅ FIX #4: Validate slot reduction doesn't violate filled_* counts
+    if (
+      body.slots_solo !== undefined ||
+      body.slots_duo !== undefined ||
+      body.slots_squad !== undefined
+    ) {
+      const current = await prisma.tournament.findUnique({
+        where: { id: Number(id) },
+        select: {
+          slots_solo: true, slots_duo: true, slots_squad: true,
+          filled_solo: true, filled_duo: true, filled_squad: true,
+        },
+      });
+
+      if (!current) {
+        return NextResponse.json(
+          { error: "Tournament not found" },
+          { status: 404 },
+        );
+      }
+
+      // Check each mode doesn't reduce below current filled count
+      const newSoloSlots = body.slots_solo ?? current.slots_solo ?? 0;
+      if (newSoloSlots < (current.filled_solo ?? 0)) {
+        return NextResponse.json(
+          {
+            error: `Cannot reduce Solo slots to ${newSoloSlots}. Already ${current.filled_solo} teams registered.`,
+          },
+          { status: 400 },
+        );
+      }
+
+      const newDuoSlots = body.slots_duo ?? current.slots_duo ?? 0;
+      if (newDuoSlots < (current.filled_duo ?? 0)) {
+        return NextResponse.json(
+          {
+            error: `Cannot reduce Duo slots to ${newDuoSlots}. Already ${current.filled_duo} teams registered.`,
+          },
+          { status: 400 },
+        );
+      }
+
+      const newSquadSlots = body.slots_squad ?? current.slots_squad ?? 0;
+      if (newSquadSlots < (current.filled_squad ?? 0)) {
+        return NextResponse.json(
+          {
+            error: `Cannot reduce Squad slots to ${newSquadSlots}. Already ${current.filled_squad} teams registered.`,
+          },
+          { status: 400 },
+        );
+      }
+
+      // Recalculate total_slots safely
+      data.slots_solo = newSoloSlots;
+      data.slots_duo = newDuoSlots;
+      data.slots_squad = newSquadSlots;
+      data.total_slots = newSoloSlots + newDuoSlots + newSquadSlots;
+    }
+
     if (Object.keys(data).length === 0)
-      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No fields to update" },
+        { status: 400 },
+      );
 
     const tournament = await prisma.tournament.update({
       where: { id: Number(id) },
@@ -52,7 +134,10 @@ export async function PUT(
   } catch (err: any) {
     console.error(err);
     if (err.code === "P2025")
-      return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Tournament not found" },
+        { status: 404 },
+      );
     return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
 }
@@ -76,7 +161,10 @@ export async function DELETE(
   } catch (err: any) {
     console.error(err);
     if (err.code === "P2025")
-      return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Tournament not found" },
+        { status: 404 },
+      );
     return NextResponse.json({ error: "Delete failed" }, { status: 500 });
   }
 }
@@ -89,7 +177,10 @@ export async function GET(
     const { id } = await context.params;
 
     if (!id) {
-      return NextResponse.json({ error: "Tournament ID required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Tournament ID required" },
+        { status: 400 },
+      );
     }
 
     // ── TOURNAMENT ──────────────────────────────────────────
@@ -98,32 +189,41 @@ export async function GET(
     });
 
     if (!tournament) {
-      return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Tournament not found" },
+        { status: 404 },
+      );
     }
 
     // ── REGISTERED TEAMS (approved only) ───────────────────
     const teams = await prisma.registration.findMany({
-      where:   { tournament_id: Number(id), status: "approved" },
-      select:  { id: true, team_name: true, team_tag: true, captain_name: true, status: true },
+      where: { tournament_id: Number(id), status: "approved" },
+      select: {
+        id: true,
+        team_name: true,
+        team_tag: true,
+        captain_name: true,
+        status: true,
+      },
       orderBy: { created_at: "asc" },
     });
 
     const teamsWithPlayers = await Promise.all(
       teams.map(async (t) => {
         const players = await prisma.player.findMany({
-          where:   { registration_id: t.id },
-          select:  { player_name: true, player_id: true, is_captain: true },
+          where: { registration_id: t.id },
+          select: { player_name: true, player_id: true, is_captain: true },
           orderBy: { is_captain: "desc" },
         });
         return {
           registrationId: t.id,
-          teamName:    t.team_name,
-          teamTag:     t.team_tag,
+          teamName: t.team_name,
+          teamTag: t.team_tag,
           captainName: t.captain_name,
-          slotStatus:  t.status,
+          slotStatus: t.status,
           players: players.map((p) => ({
-            name:      p.player_name,
-            playerId:  p.player_id,
+            name: p.player_name,
+            playerId: p.player_id,
             isCaptain: p.is_captain,
           })),
         };
@@ -146,8 +246,8 @@ export async function GET(
     });
 
     const leaderboard = leaderboardData.map((item) => ({
-      teamName:  item.registration?.team_name ?? "—",
-      points:    item.points,
+      teamName: item.registration?.team_name ?? "—",
+      points: item.points,
       awardedAt: item.created_at,
     }));
 
@@ -158,62 +258,74 @@ export async function GET(
 
     // ── NORMALIZE ───────────────────────────────────────────
     const STATUS_MAP: Record<string, string> = {
-      open: "Open", upcoming: "Open", full: "Full",
-      closed: "Closed", live: "Live",
+      open: "Open",
+      upcoming: "Open",
+      full: "Full",
+      closed: "Closed",
+      live: "Live",
     };
 
-    const totalSlots  = tournament.total_slots ?? 0;
-    const fillPercent = totalSlots > 0
-      ? Math.round((tournament.filled_slots / totalSlots) * 100)
-      : 0;
+    const totalSlots = tournament.total_slots ?? 0;
+    const fillPercent =
+      totalSlots > 0
+        ? Math.round((tournament.filled_slots / totalSlots) * 100)
+        : 0;
 
     return NextResponse.json({
       success: true,
       tournament: {
-        id:       tournament.id,
-        title:    tournament.title,
-        game:     tournament.game,
-        mode:     tournament.mode
+        id: tournament.id,
+        title: tournament.title,
+        game: tournament.game,
+        mode: tournament.mode
           ? tournament.mode.charAt(0).toUpperCase() + tournament.mode.slice(1)
           : "—",
-        map:         tournament.map,
-        status:      STATUS_MAP[tournament.status?.toLowerCase()] ?? tournament.status,
-        entry_fee:   tournament.entry_fee,
-        fee:         tournament.entry_fee ? `₹${tournament.entry_fee}` : "Free",
+        map: tournament.map,
+        status:
+          STATUS_MAP[tournament.status?.toLowerCase()] ?? tournament.status,
+        entry_fee: tournament.entry_fee,
+        fee: tournament.entry_fee ? `₹${tournament.entry_fee}` : "Free",
         // per-mode fees
-        fee_solo:    tournament.fee_solo,
-        fee_duo:     tournament.fee_duo,
-        fee_squad:   tournament.fee_squad,
-        prize:       tournament.prize_pool
+        fee_solo: tournament.fee_solo,
+        fee_duo: tournament.fee_duo,
+        fee_squad: tournament.fee_squad,
+        prize: tournament.prize_pool
           ? `₹${Number(tournament.prize_pool).toLocaleString("en-IN")}`
           : "TBA",
-        platform:    tournament.game,
+        platform: tournament.game,
         fillPercent,
-        slots:       tournament.total_slots,
-        filled:      tournament.filled_slots,
-        slots_left:  (tournament.total_slots ?? 0) - tournament.filled_slots,
+        slots: tournament.total_slots,
+        filled: tournament.filled_slots,
+        slots_left: (tournament.total_slots ?? 0) - tournament.filled_slots,
         startFormatted: tournament.start_date
           ? new Date(tournament.start_date).toLocaleString("en-IN", {
-              day: "numeric", month: "short", year: "numeric",
-              hour: "2-digit", minute: "2-digit", hour12: true,
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
             })
           : "TBA",
       },
-      teams:       teamsWithPlayers,
+      teams: teamsWithPlayers,
       leaderboard,
-      totalTeams:  teamsWithPlayers.length,
+      totalTeams: teamsWithPlayers.length,
       // ── payment config for registration ──────────────────
       paymentConfig: paymentConfig
         ? {
-            upiId:   paymentConfig.upi_id,
+            upiId: paymentConfig.upi_id,
             upiName: paymentConfig.upi_name,
-            qrUrl:   paymentConfig.qr_url,
-            note:    paymentConfig.note,
+            qrUrl: paymentConfig.qr_url,
+            note: paymentConfig.note,
           }
         : null,
     });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Failed to fetch tournament" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch tournament" },
+      { status: 500 },
+    );
   }
 }

@@ -278,10 +278,6 @@ export default function PointsPage() {
             <h1 className="text-2xl tracking-wide">Points & Rewards</h1>
             <p className="text-gray-600 text-sm mt-1 tracking-wide">Earn by winning · Earn by referring · Redeem for cash</p>
           </div>
-          <a href="/contact" className="hidden sm:flex items-center gap-2 text-[10px] text-gray-600 hover:text-[#F2AA00] border border-gray-800 hover:border-[#F2AA00]/30 px-3 py-2 rounded-lg transition-all duration-200 tracking-wide flex-shrink-0 mt-1">
-            <FontAwesomeIcon icon={faHeadset} className="text-[9px]" />
-            Customer Service
-          </a>
         </div>
 
         {/* TOTAL HERO */}
@@ -487,10 +483,6 @@ export default function PointsPage() {
                   Redeem Now <FontAwesomeIcon icon={faArrowRight} className="text-[8px]" />
                 </button>
               : <p className="text-[10px] text-gray-700">{200 - available} pts to unlock</p>}
-            <a href="/contact" className="flex items-center gap-1.5 text-[10px] text-gray-600 hover:text-[#F2AA00] transition-colors duration-200 tracking-wide border-l border-gray-800 pl-3">
-              <FontAwesomeIcon icon={faHeadset} className="text-[9px]" />
-              Customer Service
-            </a>
           </div>
         </div>
 

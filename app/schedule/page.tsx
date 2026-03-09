@@ -75,7 +75,7 @@ export default function SchedulePage() {
       </div>
 
       {/* CONTENT */}
-      <div className="max-w-4xl mx-auto px-4 py-10 space-y-10">
+      <div className="max-w-5xl mx-auto px-4 py-10 space-y-10">
 
         {/* LOADING */}
         {loading && (
@@ -127,7 +127,7 @@ export default function SchedulePage() {
 
                       {/* TIME */}
                       <div className="text-md font-mono text-gray-500 w-14 flex-shrink-0 group-hover:text-[#F2AA00] transition-colors duration-200">
-                        {"IST " + t.time}
+                        {t.time + " IST"}
                       </div>
 
                       <div className="w-px h-8 bg-gray-800 flex-shrink-0" />

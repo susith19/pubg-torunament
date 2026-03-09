@@ -7,10 +7,13 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSpinner } from "@fortawesome/free-solid-svg-icons";
 
 const MAP_IMAGES: Record<string, string> = {
-  Erangel: "/Erangle.jpg",
-  Miramar: "/miramar.jpg",
-  Sanhok:  "/Sanhok.jpg",
-  Vikendi: "/Vikendi.jpg",
+  Erangel: "/maps/Erangle.jpg",
+  Miramar: "/maps/miramar.jpg",
+  Sanhok: "/maps/Sanhok.jpg",
+  Vikendi: "/maps/Vikendi.jpg",
+  Rondo: "/maps/rondo.png",
+  Warehouse: "/maps/warehouse.jpg",
+  Livik: "/maps/livik.png",
 };
 
 const statusStyle: Record<string, string> = {
@@ -145,7 +148,7 @@ export default function MapTopMatches({ data }: { data?: any[] }) {
                             : "border border-[#F2AA00]/60 text-[#F2AA00] hover:bg-[#F2AA00] hover:text-black hover:shadow-lg hover:shadow-[#F2AA00]/20"
                         }`}
                       >
-                        {m.status === "Full" ? "Full" : m.status === "Closed" ? "Closed" : isUpcoming ? "Notify Me" : "Join Now"}
+                        {m.status === "Full" ? "Full" : m.status === "Closed" ? "Closed" : isUpcoming ? "Join Now" : "Join Now"}
                       </button>
                     </div>
                   </div>

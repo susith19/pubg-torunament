@@ -37,7 +37,7 @@ const TEAM = [
   },
   {
     role: "Co-Founder",
-    name: "Vijay Titus",
+    name: "Viju Titus",
     handle: "@vijayTitus",
     avatar: "/vijay.PNG",
     bio: "Strategy & operations. Making sure every tournament runs flawlessly.",

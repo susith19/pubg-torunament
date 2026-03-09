@@ -38,33 +38,38 @@ export async function GET() {
     const groupMap: Record<string, { date: string; day: string; matches: any[] }> = {};
 
     for (const t of tournaments) {
-      const d = t.start_date ? new Date(t.start_date) : null;
+  const d = t.start_date ? new Date(t.start_date) : null;
 
-      const dateKey = d
-        ? d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }).toUpperCase()
-        : "TBA";
+  // ✅ Use IST timezone for date grouping
+  const dateKey = d
+    ? d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" }).toUpperCase()
+    : "TBA";
 
-      const dayName = d ? DAY_NAMES[d.getDay()] : "TBA";
+  // ✅ Use IST timezone for correct day name
+  const dayName = d
+    ? DAY_NAMES[new Date(d.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })).getDay()]
+    : "TBA";
 
-      if (!groupMap[dateKey]) {
-        groupMap[dateKey] = { date: dateKey, day: dayName, matches: [] };
-      }
+  if (!groupMap[dateKey]) {
+    groupMap[dateKey] = { date: dateKey, day: dayName, matches: [] };
+  }
 
-      groupMap[dateKey].matches.push({
-        id: t.id,
-        name: t.title,
-        time: d
-          ? d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false })
-          : "TBA",
-        mode: t.mode ? t.mode.charAt(0).toUpperCase() + t.mode.slice(1) : "—",
-        map: t.map ?? "—",
-        status: STATUS_MAP[t.status?.toLowerCase()] ?? t.status,
-        slots: t.total_slots,
-        filled: t.filled_slots,
-        fee: t.entry_fee ? `₹${t.entry_fee}` : "Free",
-        platform: t.game === "BGMI" ? "BGMI" : "PUBG",
-      });
-    }
+  groupMap[dateKey].matches.push({
+    id: t.id,
+    name: t.title,
+    // ✅ IST time in 12hr format e.g. "06:00 pm"
+    time: d
+      ? d.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: true })
+      : "TBA",
+    mode: t.mode ? t.mode.charAt(0).toUpperCase() + t.mode.slice(1) : "—",
+    map: t.map ?? "—",
+    status: STATUS_MAP[t.status?.toLowerCase()] ?? t.status,
+    slots: t.total_slots,
+    filled: t.filled_slots,
+    fee: t.entry_fee ? `₹${t.entry_fee}` : "Free",
+    platform: t.game === "BGMI" ? "BGMI" : "PUBG",
+  });
+}
 
     return NextResponse.json({ schedule: Object.values(groupMap) });
 
