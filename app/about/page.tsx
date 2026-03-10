@@ -59,10 +59,10 @@ const TEAM = [
       },
       {
         label: "Dubai",
-        value: "+971 504211486",
-        href: "tel:+971504211486",
+        value: "+971 5474890556",
+        href: "tel:+9715474890556",
         flag: "🇦🇪",
-        wa: "https://wa.me/971504211486",
+        wa: "https://wa.me/9715474890556",
       },
     ],
   },

@@ -184,7 +184,7 @@ export default function TournamentDetail() {
     },
     { icon: faIndianRupeeSign, label: "Entry Fee", val: t.fee },
     { icon: faTrophy, label: "Prize", val: t.prize },
-    { icon: faCalendar, label: "Date", val: t.startFormatted + " IST" },
+    { icon: faCalendar, label: "Date", val: t.startFormatted + " IST" }, // ✅ API already formats this with date and time
     { icon: faUsers, label: "Slots", val: `${t.filled} / ${t.slots}` },
     { icon: faShield, label: "Status", val: t.status },
   ];

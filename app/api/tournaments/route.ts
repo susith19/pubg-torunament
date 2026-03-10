@@ -104,11 +104,22 @@ export async function GET(req: NextRequest) {
 
   function timeLabel(startDate: Date | null): string {
     if (!startDate) return "—";
-    return new Date(startDate).toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
+    
+    // ✅ FIX: Extract time directly from ISO string without timezone conversion
+    // Database stores: "2026-03-21T18:00:00Z" (exactly as user entered)
+    // We display: "6:00 PM" (just extract and convert to 12-hour format)
+    const isoString = new Date(startDate).toISOString();
+    const timeStr = isoString.split("T")[1]?.slice(0, 5); // "18:00"
+    
+    if (!timeStr) return "—";
+
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    
+    // Convert 24-hour to 12-hour format
+    const period = hours >= 12 ? "PM" : "AM";
+    const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+    
+    return `${displayHours}:${String(minutes).padStart(2, "0")} ${period}`;
   }
 
   const normalizedTournaments = tournaments.map((t) => ({
@@ -124,7 +135,7 @@ export async function GET(req: NextRequest) {
       : "TBA",
     platform: t.game,
     dateLabel: dateLabel(t.start_date),
-    timeLabel: timeLabel(t.start_date),
+    timeLabel: timeLabel(t.start_date), // ✅ FIX: Returns "6:00 PM" (no conversion)
     slots: t.total_slots,
     filled: t.filled_slots,
   }));

@@ -126,8 +126,10 @@ export default function SchedulePage() {
                     <div className="flex items-center gap-5 flex-1 min-w-0">
 
                       {/* TIME */}
-                      <div className="text-md font-mono text-gray-500 w-14 flex-shrink-0 group-hover:text-[#F2AA00] transition-colors duration-200">
-                        {t.time + " IST"}
+                      <div className="text-md font-mono text-gray-500 w-20 flex-shrink-0 group-hover:text-[#F2AA00] transition-colors duration-200">
+                        {/* ✅ FIX: API returns "6:00 PM" - no need to add IST suffix */}
+                        {t.time}
+                        <span className="text-gray-700 ml-1">IST</span>
                       </div>
 
                       <div className="w-px h-8 bg-gray-800 flex-shrink-0" />

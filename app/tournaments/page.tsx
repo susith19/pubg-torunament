@@ -152,7 +152,10 @@ function TournamentsContent() {
                         <td className="px-5 py-4 text-md text-gray-400 tracking-wide whitespace-nowrap">{t.dateLabel}</td>
 
                         {/* TIME */}
-                        <td className="px-5 py-4 text-md text-gray-400 font-mono whitespace-nowrap">{t.timeLabel + " IST" }</td>
+                        <td className="px-5 py-4 text-md text-gray-400 font-mono whitespace-nowrap">
+                          {/* ✅ FIX: API returns "6:00 PM" - just display it with IST suffix */}
+                          {t.timeLabel} IST
+                        </td>
 
                         {/* PLATFORM */}
                         <td className="px-5 py-4">

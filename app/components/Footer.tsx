@@ -65,8 +65,8 @@ export default function Footer() {
               </a>
             </li>
             <li>
-              <a href="https://wa.me/971504211486" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
-                🇦🇪 +971 504211486 (Ashwin)
+              <a href="https://wa.me/9715474890556" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
+                🇦🇪 +971 5474890556 (Ashwin)
               </a>
             </li>
           </ul>
