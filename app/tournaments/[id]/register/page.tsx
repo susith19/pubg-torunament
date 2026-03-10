@@ -397,7 +397,7 @@ export default function RegisterPage() {
         let time = "TBA";
         
         if (startFormatted !== "TBA" && startFormatted.includes("·")) {
-          const [datePart, timePart] = startFormatted.split("·").map(s => s.trim());
+          const [datePart, timePart] = startFormatted.split("·").map((s: string) => s.trim());
           date = datePart;
           time = timePart + " IST"; // Add IST suffix since API doesn't include it
         }
