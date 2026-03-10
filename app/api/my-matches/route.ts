@@ -35,24 +35,40 @@ export async function GET(req: NextRequest) {
       live:     "Live",
     };
 
+    // ── HELPER: Format start date without timezone conversion ──
+    // ✅ FIX: Extract date/time directly from ISO string, don't convert
+    const formatStartDate = (isoDate: Date | null): string => {
+      if (!isoDate) return "TBA";
+      
+      const isoString = new Date(isoDate).toISOString();
+      const dateStr = isoString.split("T")[0]; // "2025-03-29"
+      const timeStr = isoString.split("T")[1]?.slice(0, 5); // "11:30"
+      
+      if (!dateStr || !timeStr) return "TBA";
+      
+      // Parse: "2025-03-29" → "29 MAR 2025"
+      const [year, month, day] = dateStr.split("-");
+      const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+      const monthName = monthNames[Number(month) - 1];
+      const dateFormatted = `${Number(day)} ${monthName} ${year}`;
+      
+      // Parse: "11:30" → "11:30 AM" or "11:30 PM"
+      const [hours, minutes] = timeStr.split(":").map(Number);
+      const period = hours >= 12 ? "PM" : "AM";
+      const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+      const timeFormatted = `${String(displayHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${period}`;
+      
+      return `${dateFormatted} · ${timeFormatted} IST`;
+    };
+
     const matches = rows.map((r) => {
       const t = r.tournament;
       const p = r.payment;
 
       const startDate = t?.start_date ?? null;
 
-      // ── IST display ──────────────────────────────────────
-      const startFormatted = startDate
-        ? new Date(startDate).toLocaleString("en-IN", {
-            timeZone:  "Asia/Kolkata",
-            day:       "numeric",
-            month:     "short",
-            year:      "numeric",
-            hour:      "2-digit",
-            minute:    "2-digit",
-            hour12:    true,
-          }) + " IST"
-        : "TBA";
+      // ✅ FIX: Use new helper that doesn't convert timezone
+      const startFormatted = formatStartDate(startDate);
 
       return {
         registrationId:  r.id,
@@ -90,7 +106,7 @@ export async function GET(req: NextRequest) {
             t?.status ??
             "—",
           startDate:      startDate ? startDate.toISOString() : null, // raw UTC ISO for countdown
-          startFormatted,                                              // IST display string
+          startFormatted,                                              // ✅ Display string (no conversion)
         },
 
         room:

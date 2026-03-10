@@ -40,14 +40,22 @@ export async function POST(
     const formData       = await req.formData();
     const team_name      = formData.get("team_name")      as string;
     const team_tag       = formData.get("team_tag")       as string;
-    const players        = JSON.parse(formData.get("players") as string);
+    const playersRaw     = JSON.parse(formData.get("players") as string);
     const use_redeem     = formData.get("use_redeem") === "true";
     const upi_id         = formData.get("upi_id")         as string | null;
     const transaction_id = formData.get("transaction_id") as string | null;
     const file           = formData.get("screenshot")     as File   | null;
 
-    if (!team_name || !players || players.length < 1)
+    if (!team_name || !playersRaw || playersRaw.length < 1)
       return NextResponse.json({ error: "Team & players required" }, { status: 400 });
+
+    // ✅ FIX: Filter out empty players (those with no name AND no id)
+    const players = playersRaw.filter((p: any) => 
+      p.player_name?.trim() || p.player_id?.trim()
+    );
+
+    if (players.length < 1)
+      return NextResponse.json({ error: "At least captain is required" }, { status: 400 });
 
     const captain = players.find((p: any) => p.is_captain);
     if (!captain)
@@ -148,6 +156,7 @@ export async function POST(
           },
         });
 
+        // ✅ FIX: Only create players that are actually filled
         await tx.player.createMany({
           data: players.map((p: any) => ({
             registration_id: reg.id,
@@ -226,6 +235,7 @@ export async function POST(
         },
       });
 
+      // ✅ FIX: Only create players that are actually filled
       await tx.player.createMany({
         data: players.map((p: any) => ({
           registration_id: reg.id,

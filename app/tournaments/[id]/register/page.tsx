@@ -73,6 +73,9 @@ function PlayerSlot({ index, value, onChange, isCaptain = false }: any) {
           <input placeholder="Player ID" value={value.id} onChange={(e) => onChange("id", e.target.value)} className={inputCls + " pl-8"} />
         </div>
       </div>
+      {!isCaptain && (
+        <p className="text-[10px] text-gray-700 mt-2">Optional — leave empty to skip</p>
+      )}
     </div>
   );
 }
@@ -386,10 +389,18 @@ export default function RegisterPage() {
       .then((r) => r.json())
       .then((data) => {
         const raw            = data.tournament ?? data.data;
+        
+        // ✅ FIX: Parse startFormatted correctly
+        // API returns: "21 Mar 2026 · 6:00 PM" or "21 MAR · 6:00 PM"
         const startFormatted = raw.startFormatted ?? "TBA";
-        const [date, time]   = startFormatted !== "TBA"
-          ? startFormatted.split(", ")
-          : ["TBA", "TBA"];
+        let date = "TBA";
+        let time = "TBA";
+        
+        if (startFormatted !== "TBA" && startFormatted.includes("·")) {
+          const [datePart, timePart] = startFormatted.split("·").map(s => s.trim());
+          date = datePart;
+          time = timePart + " IST"; // Add IST suffix since API doesn't include it
+        }
 
         setTournament({
           id:          raw.id,
@@ -405,7 +416,8 @@ export default function RegisterPage() {
           fee:    raw.entry_fee ?? raw.fee ?? 0,
           slots:  raw.total_slots  ?? raw.slots  ?? 0,
           filled: raw.filled_slots ?? raw.filled  ?? 0,
-          date, time,
+          date, 
+          time,
           mapImage: ALL_MAPS.find(
             (m) => m.name.toLowerCase() === raw.map?.toLowerCase()
           )?.src ?? "/miramar.jpg",
@@ -503,13 +515,27 @@ export default function RegisterPage() {
 
   const playersValid = () => {
     if (!captain.name || !captain.id) return false;
-    // if a player fills either field, both must be filled
+    // ✅ FIX: Optional players - if a player field is filled, both must be filled
+    // But if completely empty, it's fine (skip that player)
     return players.every((p) => {
       const hasName = p.name.trim() !== "";
       const hasId   = p.id.trim()   !== "";
       if (hasName || hasId) return hasName && hasId; // partial = invalid
-      return true; // completely empty = fine
+      return true; // completely empty = valid (skip)
     });
+  };
+
+  // ✅ FIX: Only send players that are actually filled
+  const getFilledPlayers = () => {
+    const filledPlayers = players.filter(p => p.name.trim() !== "" || p.id.trim() !== "");
+    return [
+      { player_name: captain.name, player_id: captain.id, is_captain: true },
+      ...filledPlayers.map((p) => ({ 
+        player_name: p.name, 
+        player_id: p.id, 
+        is_captain: false 
+      })),
+    ];
   };
 
   const slotPercent = tournament ? Math.round((tournament.filled / tournament.slots) * 100) : 0;
@@ -544,10 +570,10 @@ export default function RegisterPage() {
         router.replace(`/login?message=Session expired&redirect=/tournaments/${id}/register`);
         return;
       }
-      const allPlayers = [
-        { player_name: captain.name, player_id: captain.id, is_captain: true },
-        ...players.map((p) => ({ player_name: p.name, player_id: p.id, is_captain: false })),
-      ];
+      
+      // ✅ FIX: Only send filled players
+      const allPlayers = getFilledPlayers();
+
       const formData = new FormData();
       formData.append("team_name",
         tournament.playerCount === 1 ? `${captain.name} - Solo` : teamName);
@@ -807,7 +833,7 @@ export default function RegisterPage() {
               <SectionLabel>
                 {tournament.playerCount === 1
                   ? "Player Info"
-                  : `Players — ${tournament.mode} (${tournament.playerCount} required)`}
+                  : `Players — ${tournament.mode} (Captain required, others optional)`}
               </SectionLabel>
               <div className="space-y-3">
                 <PlayerSlot index={1} isCaptain value={captain}

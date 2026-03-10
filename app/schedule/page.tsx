@@ -181,22 +181,32 @@ export default function SchedulePage() {
                       </div>
 
                       {/* ACTION */}
-                      {t.status === "Open" || t.status === "Live" ? (
-                        <button
-                          onClick={() => router.push(`/tournaments/${t.id}/register`)}
-                          className="bg-[#F2AA00] text-black text-xs px-4 py-2 rounded-lg hover:bg-[#e09e00] hover:shadow-lg hover:shadow-[#F2AA00]/20 active:scale-95 transition-all duration-150 tracking-widest"
-                        >
-                          JOIN NOW
-                        </button>
-                      ) : (
-                        <span className={`text-xs px-3 py-1.5 rounded-lg tracking-wide border ${
-                          t.status === "Full"
-                            ? "bg-red-500/10 text-red-400 border-red-500/20"
-                            : "bg-gray-800/60 text-gray-500 border-gray-700"
-                        }`}>
-                          {t.status}
-                        </span>
-                      )}
+                      <div className="flex flex-col items-center gap-1">
+                        {t.status === "Open" ? (
+                          <button
+                            onClick={() => router.push(`/tournaments/${t.id}/register`)}
+                            className="bg-[#F2AA00] text-black text-xs px-4 py-2 rounded-lg hover:bg-[#e09e00] hover:shadow-lg hover:shadow-[#F2AA00]/20 active:scale-95 transition-all duration-150 tracking-widest"
+                          >
+                            JOIN NOW
+                          </button>
+                        ) : (
+                          <span className={`text-xs px-3 py-1.5 rounded-lg tracking-wide border ${
+                            t.status === "Full"
+                              ? "bg-red-500/10 text-red-400 border-red-500/20"
+                              : t.status === "Live"
+                              ? "bg-[#F2AA00]/10 text-[#F2AA00] border-[#F2AA00]/30"
+                              : "bg-gray-800/60 text-gray-500 border-gray-700"
+                          }`}>
+                            {t.status}
+                          </span>
+                        )}
+                        {/* ✅ FIX: Show note for Live tournaments */}
+                        {t.status === "Live" && (
+                          <p className="text-[9px] text-gray-500 mt-1 tracking-widest text-center max-w-[120px] leading-tight">
+                            See <span className="text-[#F2AA00]">My Matches</span> for Room ID & Password
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

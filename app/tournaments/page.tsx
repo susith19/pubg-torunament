@@ -10,7 +10,7 @@ function getActionButton(status: string) {
     case "Open":    return { text: "Join Now",  cls: "bg-[#F2AA00] text-black hover:bg-[#e09e00] hover:shadow-md hover:shadow-[#F2AA00]/20 active:scale-95", disabled: false };
     case "Full":    return { text: "Full",      cls: "bg-red-500/10 text-red-400 border border-red-500/20 cursor-not-allowed", disabled: true };
     case "Closed":  return { text: "Closed",    cls: "bg-gray-800/60 text-gray-500 border border-gray-700 cursor-not-allowed", disabled: true };
-    case "Live":    return { text: "Join Now",  cls: "bg-[#F2AA00] text-black hover:bg-[#e09e00] active:scale-95", disabled: false };
+    case "Live":    return { text: "Live",      cls: "bg-[#F2AA00]/10 text-[#F2AA00] border border-[#F2AA00]/30 cursor-not-allowed", disabled: true };
     default:        return { text: "View",      cls: "border border-gray-700 text-gray-300", disabled: false };
   }
 }
@@ -193,13 +193,21 @@ function TournamentsContent() {
 
                         {/* ACTION */}
                         <td className="px-5 py-4">
-                          <button
-                            disabled={action.disabled}
-                            onClick={() => !action.disabled && router.push(`/tournaments/${t.id}/register`)}
-                            className={`text-sm px-4 py-2 rounded-lg tracking-widest transition-all duration-150 ${action.cls}`}
-                          >
-                            {action.text}
-                          </button>
+                          <div className="flex flex-col items-center gap-1.5">
+                            <button
+                              disabled={action.disabled}
+                              onClick={() => !action.disabled && router.push(`/tournaments/${t.id}/register`)}
+                              className={`text-sm px-4 py-2 rounded-lg tracking-widest transition-all duration-150 ${action.cls}`}
+                            >
+                              {action.text}
+                            </button>
+                            {/* ✅ FIX: Show note for Live tournaments */}
+                            {t.status === "Live" && (
+                              <p className="text-[9px] text-gray-500 mt-1 tracking-widest text-center max-w-[140px] leading-tight">
+                                See <span className="text-[#F2AA00]">My Matches</span> for Room ID & Password
+                              </p>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

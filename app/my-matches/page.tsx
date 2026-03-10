@@ -34,9 +34,9 @@ function useCountdown(isoDate: string | null) {
 // ── COUNTDOWN DISPLAY ─────────────────────────────────────
 function Countdown({ isoDate }: { isoDate: string | null }) {
   const t = useCountdown(isoDate);
-  if (!t) return <span className="text-gray-700 text-xs">TBA</span>;
+  if (!t) return <span className="text-gray-700 text-sm">TBA</span>;
   if (t.started) return (
-    <span className="text-[#F2AA00] text-xs tracking-widest animate-pulse">STARTED</span>
+    <span className="text-[#F2AA00] text-sm tracking-widest animate-pulse">STARTED</span>
   );
   return (
     <div className="flex items-center gap-1.5">
@@ -47,7 +47,7 @@ function Countdown({ isoDate }: { isoDate: string | null }) {
         { v: t.s, l: "s" },
       ].map(({ v, l }) => (
         <div key={l} className="flex flex-col items-center">
-          <span className="bg-[#F2AA00]/10 border border-[#F2AA00]/20 text-[#F2AA00] font-mono text-xs px-2 py-0.5 rounded-md min-w-[2rem] text-center">
+          <span className="bg-[#F2AA00]/10 border border-[#F2AA00]/20 text-[#F2AA00] font-mono text-sm px-2 py-0.5 rounded-md min-w-[2rem] text-center">
             {String(v).padStart(2, "0")}
           </span>
           <span className="text-[8px] text-gray-700 mt-0.5 tracking-widest">{l}</span>
@@ -76,16 +76,22 @@ const tStatusStyle: Record<string, string> = {
 };
 
 const MAP_IMAGES: Record<string, string> = {
-  erangel: "/Erangle.jpg",
-  miramar: "/miramar.jpg",
-  sanhok:  "/Sanhok.jpg",
-  vikendi: "/Vikendi.jpg",
+  erangel: "/maps/Erangle.jpg",
+  miramar: "/maps/miramar.jpg",
+  sanhok:  "/maps/Sanhok.jpg",
+  vikendi: "/maps/Vikendi.jpg",
+  rondo: "/maps/rondo.png",
+  warehouse: "/maps/warehouse.jpg",
+  livik: "/maps/livik.png",
 };
 const MAP_GRADIENTS: Record<string, string> = {
   erangel: "from-green-900/60",
   miramar: "from-yellow-900/60",
   sanhok:  "from-emerald-900/60",
   vikendi: "from-blue-900/60",
+  rondo: "from-purple-900/60",
+  warehouse: "from-red-900/60",
+  livik: "from-gray-900/60",
 };
 
 // ── ROOM REVEAL ────────────────────────────────────────────
@@ -103,8 +109,8 @@ function RoomReveal({ room }: { room: { id: string; pass: string } | null }) {
     <div className="flex items-center gap-2 bg-black/40 border border-gray-800 rounded-xl px-4 py-3">
       <FontAwesomeIcon icon={faLock} className="text-gray-600 text-sm flex-shrink-0" />
       <div>
-        <p className="text-xs text-gray-500 tracking-wide">Room details locked</p>
-        <p className="text-[10px] text-gray-700 mt-0.5">Revealed once admin approves your slot</p>
+        <p className="text-sm text-gray-500 tracking-wide">Room details locked</p>
+        <p className="text-sm text-gray-700 mt-0.5">Revealed once admin approves your slot</p>
       </div>
     </div>
   );
@@ -113,7 +119,7 @@ function RoomReveal({ room }: { room: { id: string; pass: string } | null }) {
     <div className="bg-[#F2AA00]/5 border border-[#F2AA00]/20 rounded-xl px-4 py-3.5 space-y-3">
       <div className="flex items-center gap-2 mb-1">
         <FontAwesomeIcon icon={faKey} className="text-[#F2AA00] text-sm" />
-        <p className="text-[10px] text-[#F2AA00] tracking-widest uppercase">Room Info</p>
+        <p className="text-sm text-[#F2AA00] tracking-widest uppercase">Room Info</p>
       </div>
       {[
         { label: "Room ID",   val: room.id,   which: "id"   as const, copied: copiedId   },
@@ -121,13 +127,13 @@ function RoomReveal({ room }: { room: { id: string; pass: string } | null }) {
       ].map(({ label, val, which, copied }) => (
         <div key={label} className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-[9px] text-gray-600 tracking-widest uppercase mb-0.5">{label}</p>
+            <p className="text-xs text-gray-600 tracking-widest uppercase mb-0.5">{label}</p>
             <p className="text-sm text-white font-mono tracking-widest">{val || "—"}</p>
           </div>
           {val && (
             <button
               onClick={() => copy(val, which)}
-              className={`flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-lg border transition-all duration-150 ${copied ? "border-[#F2AA00]/50 bg-[#F2AA00]/10 text-[#F2AA00]" : "border-gray-700 text-gray-500 hover:border-gray-600 hover:text-white"}`}
+              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all duration-150 ${copied ? "border-[#F2AA00]/50 bg-[#F2AA00]/10 text-[#F2AA00]" : "border-gray-700 text-gray-500 hover:border-gray-600 hover:text-white"}`}
             >
               <FontAwesomeIcon icon={copied ? faCheck : faCopy} className="text-[8px]" />
               {copied ? "Copied!" : "Copy"}
@@ -167,11 +173,11 @@ function MatchCard({ m, index }: { m: any; index: number }) {
 
         {/* top badges */}
         <div className="absolute top-3 left-4 flex items-center gap-2">
-          <span className={`text-[10px] px-2.5 py-1 rounded-md border tracking-widest ${tStatusStyle[t.status] ?? tStatusStyle.Closed}`}>
+          <span className={`text-sm px-2.5 py-1 rounded-md border tracking-widest ${tStatusStyle[t.status] ?? tStatusStyle.Closed}`}>
             {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#F2AA00] mr-1.5 animate-pulse" />}
             {t.status}
           </span>
-          <span className={`text-[10px] px-2.5 py-1 rounded-md border flex items-center gap-1.5 ${regStatusStyle[m.regStatus] ?? regStatusStyle.pending}`}>
+          <span className={`text-sm px-2.5 py-1 rounded-md border flex items-center gap-1.5 ${regStatusStyle[m.regStatus] ?? regStatusStyle.pending}`}>
             <FontAwesomeIcon icon={regStatusIcon[m.regStatus] ?? faHourglassHalf} className="text-[8px]" />
             {m.regStatus.charAt(0).toUpperCase() + m.regStatus.slice(1)}
           </span>
@@ -179,14 +185,14 @@ function MatchCard({ m, index }: { m: any; index: number }) {
 
         {/* prize top-right */}
         <div className="absolute top-3 right-4 text-right">
-          <p className="text-[9px] text-gray-500 tracking-widest">PRIZE</p>
+          <p className="text-xs text-gray-500 tracking-widest">PRIZE</p>
           <p className="text-sm text-[#F2AA00] font-mono">{t.prize}</p>
         </div>
 
         {/* title bottom */}
         <div className="absolute bottom-3 left-4 right-4">
           <p className="text-white text-sm tracking-wide truncate">{t.name}</p>
-          <p className="text-gray-400 text-[10px] mt-0.5">{t.map} · {t.mode} · {t.platform}</p>
+          <p className="text-gray-400 text-sm mt-0.5">{t.map} · {t.mode} · {t.platform}</p>
         </div>
       </div>
 
@@ -201,7 +207,7 @@ function MatchCard({ m, index }: { m: any; index: number }) {
             { label: "Txn ID",    val: m.payment?.transactionId ?? "—" },
           ].map((r, i) => (
             <div key={i} className="bg-black border border-gray-800 rounded-lg px-3 py-2">
-              <p className="text-[9px] text-gray-600 tracking-widest uppercase mb-1">{r.label}</p>
+              <p className="text-xs text-gray-600 tracking-widest uppercase mb-1">{r.label}</p>
               <p className="text-[11px] text-white truncate">{r.val}</p>
             </div>
           ))}
@@ -210,12 +216,38 @@ function MatchCard({ m, index }: { m: any; index: number }) {
         {/* COUNTDOWN */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[9px] text-gray-600 tracking-widest uppercase mb-1.5">Match Starts In</p>
+            <p className="text-xs text-gray-600 tracking-widest uppercase mb-1.5">Match Starts In</p>
             <Countdown isoDate={t.startDate} />
           </div>
           <div className="text-right">
-            <p className="text-[9px] text-gray-600 tracking-widest uppercase mb-1">Scheduled</p>
-            <p className="text-[11px] text-gray-400">{t.startFormatted}</p>
+            <p className="text-xs text-gray-600 tracking-widest uppercase mb-1">Scheduled</p>
+            {/* ✅ FIX: startFormatted can be "21 Mar 2026 · 6:00 PM" or "29 MAR 2025, 11:30 PM"
+                Format it as: DATE on separate line, TIME with IST */}
+            <div>
+              {t.startFormatted ? (
+                <>
+                  {/* Extract date and time parts */}
+                  {(() => {
+                    const parts = t.startFormatted
+                      .replace(",", "·") // normalize comma to middle-dot
+                      .split("·")
+                      .map((s: string) => s.trim());
+                    const date = parts[0] || "TBA";
+                    const time = parts[1] || "";
+                    return (
+                      <>
+                        <p className="text-[14px] text-gray-400">{date}</p>
+                        <p className="text-[14px] text-gray-400 mt-1">
+                          {time}
+                        </p>
+                      </>
+                    );
+                  })()}
+                </>
+              ) : (
+                <p className="text-[11px] text-gray-400">TBA</p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -227,8 +259,8 @@ function MatchCard({ m, index }: { m: any; index: number }) {
           <div className="flex items-start gap-2 bg-[#F2AA00]/5 border border-[#F2AA00]/10 rounded-xl px-4 py-3">
             <FontAwesomeIcon icon={faHourglassHalf} className="text-[#F2AA00]/60 text-sm flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs text-gray-400">Payment under review</p>
-              <p className="text-[10px] text-gray-600 mt-0.5">Admin will verify your payment and approve your slot. Room details will appear here once approved.</p>
+              <p className="text-sm text-gray-400">Payment under review</p>
+              <p className="text-sm text-gray-600 mt-0.5">Admin will verify your payment and approve your slot. Room details will appear here once approved.</p>
             </div>
           </div>
         )}
@@ -238,8 +270,8 @@ function MatchCard({ m, index }: { m: any; index: number }) {
           <div className="flex items-start gap-2 bg-red-500/5 border border-red-500/10 rounded-xl px-4 py-3">
             <FontAwesomeIcon icon={faXmarkCircle} className="text-red-400/60 text-sm flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs text-red-400">Registration rejected</p>
-              <p className="text-[10px] text-gray-600 mt-0.5">Contact support if you believe this is a mistake.</p>
+              <p className="text-sm text-red-400">Registration rejected</p>
+              <p className="text-sm text-gray-600 mt-0.5">Contact support if you believe this is a mistake.</p>
             </div>
           </div>
         )}
@@ -247,10 +279,10 @@ function MatchCard({ m, index }: { m: any; index: number }) {
         {/* EXPAND — players */}
         <button
           onClick={() => setExpanded((p) => !p)}
-          className="w-full flex items-center justify-between text-[10px] text-gray-600 hover:text-gray-400 transition-colors duration-150 pt-1 border-t border-gray-800/50"
+          className="w-full flex items-center justify-between text-sm text-gray-600 hover:text-gray-400 transition-colors duration-150 pt-1 border-t border-gray-800/50"
         >
           <span className="tracking-widest uppercase">Players ({m.players?.length ?? 0})</span>
-          <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} className="text-[9px]" />
+          <FontAwesomeIcon icon={expanded ? faChevronUp : faChevronDown} className="text-xs" />
         </button>
 
         {expanded && (
@@ -262,7 +294,7 @@ function MatchCard({ m, index }: { m: any; index: number }) {
                 </div>
                 <div className="min-w-0">
                   <p className="text-[11px] text-white truncate">{p.name}</p>
-                  <p className="text-[9px] text-gray-600 font-mono truncate">{p.playerId}</p>
+                  <p className="text-xs text-gray-600 font-mono truncate">{p.playerId}</p>
                 </div>
               </div>
             ))}
@@ -368,11 +400,11 @@ export default function MyMatchesPage() {
       <div className="pointer-events-none fixed top-0 right-0 w-[500px] h-[500px] rounded-full bg-[#F2AA00]/5 blur-[120px] -translate-y-1/3 translate-x-1/4" />
       <div className="pointer-events-none fixed bottom-0 left-0 w-[380px] h-[380px] rounded-full bg-[#F2AA00]/4 blur-[100px] translate-y-1/3 -translate-x-1/4" />
 
-      <div className="max-w-4xl mx-auto space-y-6 relative z-10">
+      <div className="max-w-6xl mx-auto space-y-6 relative z-10">
 
         {/* HEADER */}
         <div className={`transition-all duration-500 ${visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"}`}>
-          <p className="text-[10px] tracking-[0.4em] text-[#F2AA00]/60 uppercase mb-1">Player</p>
+          <p className="text-sm tracking-[0.4em] text-[#F2AA00]/60 uppercase mb-1">Player</p>
           <h1 className="text-2xl tracking-wide">My Matches</h1>
           <p className="text-gray-600 text-sm mt-1">
             {counts.approved} confirmed · {counts.pending} pending · {counts.rejected} rejected
@@ -385,10 +417,10 @@ export default function MyMatchesPage() {
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-4 py-1.5 text-xs tracking-widest rounded-lg border transition-all duration-150 ${filter === f ? "bg-[#F2AA00] text-black border-[#F2AA00]" : "border-gray-800 text-gray-500 hover:border-gray-700 hover:text-gray-300"}`}
+              className={`px-4 py-1.5 text-sm tracking-widest rounded-lg border transition-all duration-150 ${filter === f ? "bg-[#F2AA00] text-black border-[#F2AA00]" : "border-gray-800 text-gray-500 hover:border-gray-700 hover:text-gray-300"}`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
-              <span className={`ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full ${filter === f ? "bg-black/20" : "bg-gray-800"}`}>
+              <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${filter === f ? "bg-black/20" : "bg-gray-800"}`}>
                 {counts[f]}
               </span>
             </button>
@@ -402,9 +434,9 @@ export default function MyMatchesPage() {
             <p className="text-gray-600 text-sm tracking-wide">No matches {filter !== "all" ? `with status "${filter}"` : "yet"}.</p>
             <button
               onClick={() => router.push("/tournaments")}
-              className="mt-5 flex items-center gap-2 text-[#F2AA00] text-xs tracking-widest mx-auto hover:text-[#F2AA00]/70 transition-colors"
+              className="mt-5 flex items-center gap-2 text-[#F2AA00] text-sm tracking-widest mx-auto hover:text-[#F2AA00]/70 transition-colors"
             >
-              Browse Tournaments <FontAwesomeIcon icon={faArrowRight} className="text-[9px]" />
+              Browse Tournaments <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
             </button>
           </div>
         )}
