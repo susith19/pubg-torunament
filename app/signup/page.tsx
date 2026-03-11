@@ -133,7 +133,7 @@ export default function Signup() {
   const allRulesPassed = rules.every((r) => r.test(password));
 
   const signup = async () => {
-    if (!email || !password) return;
+    if (!email || !password || !agreed) return;
 
     setLoading(true);
     setError("");
@@ -148,33 +148,33 @@ export default function Signup() {
       // ✅ 3. Force refresh token (IMPORTANT)
       const token = await res.user.getIdToken(true);
 
-      // ✅ 4. Send to backend (with optional referral code)
+      // ✅ 4. Send to backend with httpOnly cookie session
       const apiRes = await fetch("/api/auth/firebase", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include", // 🔒 Use httpOnly cookies
         body: JSON.stringify({
           token,
-          ...(referralCode.trim() && { referral_code: referralCode.trim() }), // 👈 Only sent if provided
+          ...(referralCode.trim() && { referral_code: referralCode.trim() }),
         }),
       });
 
       const data = await apiRes.json();
 
       if (!apiRes.ok) {
-        throw new Error(data.error || "Backend failed");
+        throw new Error(data.error || "Account creation failed. Please try again.");
       }
 
-      // ✅ 5. Save session
-      localStorage.setItem("token", token);
-      localStorage.setItem("name", res.user.displayName || "User");
+      // ✅ 5. Backend now handles session via httpOnly cookie
+      // Do NOT store tokens or user data in localStorage
 
       // ✅ 6. Redirect
       window.location.href = "/";
     } catch (e: any) {
       console.error(e);
-      setError(e.message || "Sign up failed.");
+      setError(e.message || "Sign up failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -188,30 +188,35 @@ export default function Signup() {
       const res = await signInWithPopup(auth, provider);
       const token = await res.user.getIdToken();
 
+      // 🔒 Use httpOnly cookies instead of localStorage
       await fetch("/api/auth/firebase", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include", // 🔒 Enable cookie handling
         body: JSON.stringify({
           token,
-          ...(referralCode.trim() && { referral_code: referralCode.trim() }), // 👈 Also passed for Google signup
+          ...(referralCode.trim() && { referral_code: referralCode.trim() }),
         }),
       });
 
-      localStorage.setItem("token", token);
-      localStorage.setItem("name", res.user.displayName || "User");
+      // 🔒 Session handled via httpOnly cookies by backend
       window.location.href = "/";
     } catch (e: any) {
-      setError(e.message || "Google sign up failed.");
+      setError(e.message || "Google sign up failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") signup();
+    if (e.key === "Enter" && allRulesPassed && passwordsMatch && agreed) {
+      signup();
+    }
   };
+
+  const isFormValid = email && password && confirmPassword && agreed && allRulesPassed && passwordsMatch;
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
@@ -471,7 +476,7 @@ export default function Signup() {
           {/* Sign Up Button */}
           <button
             onClick={signup}
-            disabled={loading}
+            disabled={loading || !isFormValid}
             className="relative overflow-hidden w-full py-3 rounded-xl bg-gray-900 text-white text-lg transition-all duration-300 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer group"
           >
             <span className="relative z-10 transition-colors duration-300 group-hover:text-black">

@@ -6,8 +6,18 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
+        disallow: [
+          "/login",
+          "/signup",
+          "/profile",
+          "/my-matches",
+          "/redeem-points",
+          "/tournaments/*/register",
+          "/admin",
+          "/api",
+        ],
       },
     ],
-    sitemap: "https://kingofpubgtournaments.com/sitemap.xml",
+    sitemap: "https://kingpubgtournaments.com/sitemap.xml",
   };
 }
