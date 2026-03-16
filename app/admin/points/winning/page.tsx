@@ -86,7 +86,6 @@ function Toast({ msg, type, onClose }: { msg: string; type: "ok" | "err"; onClos
 }
 
 // ── Award Form Modal ──────────────────────────────────────
-
 function AwardModal({
   team, onClose, onSave,
 }: {
@@ -97,18 +96,63 @@ function AwardModal({
   const [position, setPosition] = useState(team.award?.position ?? 1);
   const [kills,    setKills]    = useState(team.award?.kills    ?? 0);
   const [saving,   setSaving]   = useState(false);
-
-  const mode        = team.mode ?? "solo";
-  const placementPts = getPlacementPoints(position, mode);
-  const killPts      = getKillPoints(kills);
-  const totalPts     = calcTotal(position, kills, mode);
-
+  const [pointsConfig, setPointsConfig] = useState<any>(null);
+  const [configLoading, setConfigLoading] = useState(true);
+ 
+  // Fetch points config on mount
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch("/api/admin/points-config");
+        const data = await res.json();
+        if (data.success) {
+          setPointsConfig(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch points config:", error);
+      } finally {
+        setConfigLoading(false);
+      }
+    };
+    fetchConfig();
+  }, []);
+ 
+  const mode = team.mode ?? "solo";
+  
+  // Calculate placement points from config
+  const getPlacementPtsFromConfig = () => {
+    if (!pointsConfig?.placement) return 0;
+    const placement = pointsConfig.placement[mode];
+    if (!placement) return 0;
+    
+    // Direct match
+    if (placement[position]) return placement[position];
+    
+    // Range match
+    for (const [range, pts] of Object.entries(placement)) {
+      if (range.includes("-")) {
+        const [min, max] = range.split("-").map(Number);
+        if (position >= min && position <= max) return pts;
+      }
+    }
+    return 0;
+  };
+ 
+  const getKillPtsFromConfig = () => {
+    if (!pointsConfig?.kill_points) return 0;
+    return kills * pointsConfig.kill_points;
+  };
+ 
+  const placementPts = getPlacementPtsFromConfig();
+  const killPts      = getKillPtsFromConfig();
+  const totalPts     = placementPts + killPts;
+ 
   async function handleSave() {
     setSaving(true);
     await onSave(team.registrationId, position, kills, team.award?.id);
     setSaving(false);
   }
-
+ 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className="bg-[#0d0d0d] border border-gray-800 rounded-2xl w-full max-w-md shadow-2xl">
@@ -124,7 +168,7 @@ function AwardModal({
             <FontAwesomeIcon icon={faXmark} />
           </button>
         </div>
-
+ 
         {/* Players list */}
         {team.players.length > 0 && (
           <div className="px-6 pt-4">
@@ -139,7 +183,7 @@ function AwardModal({
             </div>
           </div>
         )}
-
+ 
         {/* Inputs */}
         <div className="px-6 py-4 space-y-4">
           {/* Position */}
@@ -162,11 +206,11 @@ function AwardModal({
               />
             </div>
           </div>
-
+ 
           {/* Kills */}
           <div>
             <label className="block text-[10px] text-gray-500 tracking-widest uppercase mb-2">
-              Kills  <span className="text-gray-600 normal-case">(×5 pts each)</span>
+              Kills <span className="text-gray-600 normal-case">({pointsConfig?.kill_points || 5} pts each)</span>
             </label>
             <div className="flex items-center gap-3">
               <button onClick={() => setKills(Math.max(0, kills - 1))}
@@ -177,37 +221,43 @@ function AwardModal({
                 className="w-9 h-9 flex items-center justify-center border border-gray-700 rounded-lg text-gray-400 hover:border-gray-500 hover:text-white transition-all text-lg font-bold">+</button>
             </div>
           </div>
-
+ 
           {/* Points Breakdown */}
-          <div className="bg-black border border-gray-800 rounded-xl px-4 py-3 space-y-2">
-            <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1">Points Breakdown</p>
-            <div className="flex justify-between text-xs text-gray-500">
-              <span className="flex items-center gap-1.5">
-                <FontAwesomeIcon icon={faStar} className="text-[#F2AA00]/50 text-[9px]" />
-                Placement ({posLabel(position)} · <span className="capitalize ml-0.5">{mode}</span>)
-              </span>
-              <span className="text-gray-300 font-mono">+{placementPts}</span>
+          {configLoading ? (
+            <div className="bg-black border border-gray-800 rounded-xl px-4 py-3">
+              <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-2">Loading points config...</p>
             </div>
-            <div className="flex justify-between text-xs text-gray-500">
-              <span className="flex items-center gap-1.5">
-                <FontAwesomeIcon icon={faSkull} className="text-gray-600 text-[9px]" />
-                Kill points ({kills} × 5)
-              </span>
-              <span className="text-gray-300 font-mono">+{killPts}</span>
+          ) : (
+            <div className="bg-black border border-gray-800 rounded-xl px-4 py-3 space-y-2">
+              <p className="text-[10px] text-gray-600 tracking-widest uppercase mb-1">Points Breakdown</p>
+              <div className="flex justify-between text-xs text-gray-500">
+                <span className="flex items-center gap-1.5">
+                  <FontAwesomeIcon icon={faStar} className="text-[#F2AA00]/50 text-[9px]" />
+                  Placement ({posLabel(position)} · <span className="capitalize ml-0.5">{mode}</span>)
+                </span>
+                <span className="text-gray-300 font-mono">+{placementPts}</span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-500">
+                <span className="flex items-center gap-1.5">
+                  <FontAwesomeIcon icon={faSkull} className="text-gray-600 text-[9px]" />
+                  Kill points ({kills} × {pointsConfig?.kill_points || 5})
+                </span>
+                <span className="text-gray-300 font-mono">+{killPts}</span>
+              </div>
+              <div className="border-t border-gray-800 pt-2 flex justify-between items-center">
+                <span className="text-[10px] text-gray-600 tracking-widest uppercase">Total</span>
+                <span className="text-[#F2AA00] font-mono text-lg font-bold">+{totalPts} pts</span>
+              </div>
             </div>
-            <div className="border-t border-gray-800 pt-2 flex justify-between items-center">
-              <span className="text-[10px] text-gray-600 tracking-widest uppercase">Total</span>
-              <span className="text-[#F2AA00] font-mono text-lg font-bold">+{totalPts} pts</span>
-            </div>
-          </div>
+          )}
         </div>
-
+ 
         {/* Actions */}
         <div className="flex gap-3 p-6 border-t border-gray-800">
           <button onClick={onClose} className="flex-1 border border-gray-700 text-gray-400 py-2.5 rounded-xl text-sm tracking-wide hover:border-gray-500 hover:text-white transition-all">
             Cancel
           </button>
-          <button onClick={handleSave} disabled={saving}
+          <button onClick={handleSave} disabled={saving || configLoading}
             className="flex-1 bg-[#F2AA00] text-black py-2.5 rounded-xl text-sm tracking-widest font-bold hover:bg-[#e09e00] active:scale-95 transition-all disabled:opacity-50">
             {saving ? "Saving…" : team.award ? `Update · +${totalPts} pts` : `Award +${totalPts} pts`}
           </button>
@@ -406,7 +456,7 @@ export default function AdminPointsPage() {
           </div>
         ) : filteredTournaments.length === 0 ? (
           <div className="text-center py-20 text-gray-600">
-            <FontAwesomeIcon icon={faTrophy} className="text-4xl mb-3 block" />
+            <FontAwesomeIcon icon={faTrophy} className="text-4xl block" />
             No tournaments with approved registrations yet.
           </div>
         ) : (

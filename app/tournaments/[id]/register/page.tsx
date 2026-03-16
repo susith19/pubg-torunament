@@ -11,7 +11,6 @@ import {
   faStar, faCoins, faTrophy, faCrosshairs, faArrowRight,
   faDownload, faX, faExpand,
 } from "@fortawesome/free-solid-svg-icons";
-import { getPlacementPoints, getKillPoints } from "@/lib/points";
 
 const ALL_MAPS = [
   { name: "Erangel", src: "/maps/Erangle.jpg"  },
@@ -37,6 +36,12 @@ type PreviousTeam = {
   team_name: string;
   team_tag:  string;
   players:   { player_name: string; player_id: string; is_captain: boolean }[];
+};
+
+// ✅ NEW: Type for points configuration from database
+type PointsConfig = {
+  placement: Record<string, Record<string, number>>;
+  kill_points: number;
 };
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -102,7 +107,7 @@ function QRCodeModal({ qrUrl, upiName, onClose }: { qrUrl: string; upiName: stri
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-[#F2AA00]/8">
           <div className="flex items-center gap-2">
             <FontAwesomeIcon icon={faQrcode} className="text-[#F2AA00] text-lg" />
-            <h2 className="text-white text-sm tracking-wide font-semibold">{upiName || "Payment QR"}</h2>
+            <h2 className="text-white text-sm tracking-wide ">{upiName || "Payment QR"}</h2>
           </div>
           <button
             onClick={onClose}
@@ -124,7 +129,7 @@ function QRCodeModal({ qrUrl, upiName, onClose }: { qrUrl: string; upiName: stri
         <div className="flex gap-3 px-6 py-4 border-t border-gray-800 bg-black/20">
           <button
             onClick={downloadQR}
-            className="flex-1 flex items-center justify-center gap-2 bg-[#F2AA00] text-black py-2.5 rounded-lg text-xs tracking-widest font-semibold hover:bg-[#e09e00] transition-all active:scale-95"
+            className="flex-1 flex items-center justify-center gap-2 bg-[#F2AA00] text-black py-2.5 rounded-lg text-xs tracking-widest  hover:bg-[#e09e00] transition-all active:scale-95"
           >
             <FontAwesomeIcon icon={faDownload} className="text-sm" />
             Download QR
@@ -142,38 +147,26 @@ function QRCodeModal({ qrUrl, upiName, onClose }: { qrUrl: string; upiName: stri
 }
 
 // ── POINTS TABLE ──────────────────────────────────────────
-function PointsTable({ mode }: { mode: string }) {
-  const m = mode?.toLowerCase() ?? "squad";
+// ✅ UPDATED: Now uses pointsConfig from props instead of lib/points
+function PointsTable({ mode, pointsConfig }: { mode: string; pointsConfig: PointsConfig | null }) {
+  if (!pointsConfig) {
+    return (
+      <div className="bg-[#0b0b0b] border border-gray-800 rounded-xl p-4">
+        <SectionLabel>Points System</SectionLabel>
+        <p className="text-xs text-gray-500">Loading points configuration...</p>
+      </div>
+    );
+  }
 
-  const placements =
-    m === "solo"
-      ? [
-          { pos: "🥇 1st",    pts: getPlacementPoints(1,  m) },
-          { pos: "🥈 2nd",    pts: getPlacementPoints(2,  m) },
-          { pos: "🥉 3rd",    pts: getPlacementPoints(3,  m) },
-          { pos: "4th",        pts: getPlacementPoints(4,  m) },
-          { pos: "5th",        pts: getPlacementPoints(5,  m) },
-          { pos: "6th–10th",   pts: getPlacementPoints(6,  m) },
-          { pos: "11th–15th",  pts: getPlacementPoints(11, m) },
-          { pos: "16th–20th",  pts: getPlacementPoints(16, m) },
-        ]
-      : m === "duo"
-      ? [
-          { pos: "🥇 1st",    pts: getPlacementPoints(1,  m) },
-          { pos: "🥈 2nd",    pts: getPlacementPoints(2,  m) },
-          { pos: "🥉 3rd",    pts: getPlacementPoints(3,  m) },
-          { pos: "4th",        pts: getPlacementPoints(4,  m) },
-          { pos: "5th–10th",   pts: getPlacementPoints(5,  m) },
-          { pos: "11th–15th",  pts: getPlacementPoints(11, m) },
-        ]
-      : [
-          { pos: "🥇 1st",    pts: getPlacementPoints(1,  m) },
-          { pos: "🥈 2nd",    pts: getPlacementPoints(2,  m) },
-          { pos: "🥉 3rd",    pts: getPlacementPoints(3,  m) },
-          { pos: "4th",        pts: getPlacementPoints(4,  m) },
-          { pos: "5th",        pts: getPlacementPoints(5,  m) },
-          { pos: "6th–10th",   pts: getPlacementPoints(6,  m) },
-        ];
+  const m = mode?.toLowerCase() ?? "team";
+  const placementData = pointsConfig.placement[m] || pointsConfig.placement["team"];
+  const killPoints = pointsConfig.kill_points;
+
+  // Convert placement data to array format for display
+  const placements = Object.entries(placementData).map(([position, points]) => ({
+    pos: position,
+    pts: points,
+  }));
 
   return (
     <div className="bg-[#0b0b0b] border border-gray-800 rounded-xl p-4">
@@ -190,8 +183,10 @@ function PointsTable({ mode }: { mode: string }) {
             <div key={i} className={`flex items-center justify-between px-3 py-2 text-xs ${
               i % 2 === 0 ? "bg-black/40" : "bg-black/20"
             } ${i === 0 ? "border-b border-[#F2AA00]/20" : ""}`}>
-              <span className={`${i === 0 ? "text-[#F2AA00] font-semibold" : "text-gray-400"}`}>{row.pos}</span>
-              <span className={`font-mono font-bold ${i === 0 ? "text-[#F2AA00]" : "text-gray-300"}`}>{row.pts} pts</span>
+              <span className={`${i === 0 ? "text-[#F2AA00] " : "text-gray-400"}`}>
+                {row.pos === "1" ? "🥇 1st" : row.pos === "2" ? "🥈 2nd" : row.pos === "3" ? "🥉 3rd" : row.pos}
+              </span>
+              <span className={`xmono  ${i === 0 ? "text-[#F2AA00]" : "text-gray-300"}`}>{row.pts} pts</span>
             </div>
           ))}
         </div>
@@ -200,18 +195,20 @@ function PointsTable({ mode }: { mode: string }) {
       {/* Kill points */}
       <div className="flex items-center gap-2 bg-black/40 border border-gray-800 rounded-lg px-3 py-2.5">
         <FontAwesomeIcon icon={faCrosshairs} className="text-red-400 text-xs flex-shrink-0" />
-        <p className="text-xs text-gray-400">Each kill = <span className="text-white font-mono font-bold">{getKillPoints(1)} pts</span></p>
+        <p className="text-xs text-gray-400">Each kill = <span className="text-white font-mono ">{killPoints} pts</span></p>
       </div>
 
-      {/* Example calc */}
-      <div className="mt-3 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-3 py-2.5">
-        <p className="text-[10px] text-gray-500 mb-1 tracking-widest uppercase">Example</p>
-        <p className="text-xs text-gray-400">
-          1st place + 5 kills = <span className="text-[#F2AA00] font-mono font-bold">
-            {getPlacementPoints(1, m) + getKillPoints(5)} pts
-          </span>
-        </p>
-      </div>
+      {/* Example calc - use first placement position for example */}
+      {placements.length > 0 && (
+        <div className="mt-3 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-3 py-2.5">
+          <p className="text-[10px] text-gray-500 mb-1 tracking-widest uppercase">Example</p>
+          <p className="text-xs text-gray-400">
+            1st place + 5 kills = <span className="text-[#F2AA00] font-mono ">
+              {placements[0].pts + (killPoints * 5)} pts
+            </span>
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -242,7 +239,7 @@ function PaymentBlock({ config, fee }: { config: PaymentConfig; fee: number }) {
               {config.upiName || "Pay Entry Fee"}
             </span>
           </div>
-          <div className="flex items-center gap-1 bg-[#F2AA00] text-black text-xs font-bold px-2.5 py-0.5 rounded-full font-mono">
+          <div className="flex items-center gap-1 bg-[#F2AA00] text-black text-xs  px-2.5 py-0.5 rounded-full font-mono">
             <FontAwesomeIcon icon={faIndianRupeeSign} className="text-[10px]" />
             {fee}
           </div>
@@ -313,7 +310,7 @@ function PaymentBlock({ config, fee }: { config: PaymentConfig; fee: number }) {
               <div className="flex items-start gap-2.5 bg-[#F2AA00]/5 border border-[#F2AA00]/15 rounded-lg px-4 py-3">
                 <FontAwesomeIcon icon={faCircleExclamation} className="text-[#F2AA00]/70 text-sm mt-0.5 flex-shrink-0" />
                 <p className="text-sm text-gray-400 leading-relaxed">
-                  Pay <span className="text-[#F2AA00] font-mono font-bold">{feeStr}</span> via UPI to the organiser, then upload your payment screenshot and enter the Transaction ID below.
+                  Pay <span className="text-[#F2AA00] font-mono ">{feeStr}</span> via UPI to the organiser, then upload your payment screenshot and enter the Transaction ID below.
                 </p>
               </div>
             </div>
@@ -364,6 +361,9 @@ export default function RegisterPage() {
   const [pointsLoaded,   setPointsLoaded]   = useState(false);
   const [useRedeem,      setUseRedeem]      = useState(false);
 
+  // ✅ NEW: Points config state
+  const [pointsConfig,   setPointsConfig]   = useState<PointsConfig | null>(null);
+
   // ── Previous team state ──
   const [prevTeams,      setPrevTeams]      = useState<PreviousTeam[]>([]);
   const [selectedTeam,   setSelectedTeam]   = useState<string>("");
@@ -378,7 +378,7 @@ export default function RegisterPage() {
     }
   }, []);
 
-  // FETCH tournament + payment config + user points + previous teams
+  // FETCH tournament + payment config + user points + previous teams + points config
   useEffect(() => {
     if (!authChecked || !id) return;
 
@@ -474,6 +474,45 @@ export default function RegisterPage() {
       }
     };
     fetchUserPoints().finally(() => setPointsLoaded(true));
+
+    // ✅ NEW: Fetch points configuration from database
+    const fetchPointsConfig = async () => {
+      try {
+        const res = await fetch("/api/points-config");
+        if (res.ok) {
+          const data = await res.json();
+          // Extract placement and kill_points from the response
+          const config: PointsConfig = {
+            placement: data.pointsConfig?.placement || data.placement || {},
+            kill_points: data.pointsConfig?.kill_points || data.kill_points || 5,
+          };
+          setPointsConfig(config);
+        } else {
+          console.error("Failed to fetch points config:", res.status);
+          // Set default points config if API fails
+          setPointsConfig({
+            placement: {
+              solo: { "1": 500, "2": 400, "3": 300, "4": 200, "5": 100, "6-10": 75, "11-15": 50, "16-20": 30 },
+              duo: { "1": 500, "2": 400, "3": 300, "4": 200, "5-10": 100, "11-15": 50 },
+              team: { "1": 500, "2": 400, "3": 300, "4": 200, "5": 180, "6-10": 75 },
+            },
+            kill_points: 5,
+          });
+        }
+      } catch (e) {
+        console.error("Error fetching points config:", e);
+        // Fallback to default config
+        setPointsConfig({
+          placement: {
+            solo: { "1": 500, "2": 400, "3": 300, "4": 200, "5": 100, "6-10": 75, "11-15": 50, "16-20": 30 },
+            duo: { "1": 500, "2": 400, "3": 300, "4": 200, "5-10": 100, "11-15": 50 },
+            team: { "1": 500, "2": 400, "3": 300, "4": 200, "5": 180, "6-10": 75 },
+          },
+          kill_points: 5,
+        });
+      }
+    };
+    fetchPointsConfig();
 
     // Previous teams from user's past registrations
     fetch("/api/user/teams", { headers: { Authorization: `Bearer ${token}` } })
@@ -700,7 +739,7 @@ export default function RegisterPage() {
           <h2 className="text-xl tracking-wide">Registration Submitted!</h2>
           <p className="text-gray-500 text-sm leading-relaxed">
             {useRedeem
-              ? <>Your entry fee was paid using <span className="text-[#F2AA00] font-mono font-bold">{tournament?.fee} points</span>. Admin will confirm your slot for <span className="text-[#F2AA00]">{tournament?.name}</span>.</>
+              ? <>Your entry fee was paid using <span className="text-[#F2AA00] font-mono ">{tournament?.fee} points</span>. Admin will confirm your slot for <span className="text-[#F2AA00]">{tournament?.name}</span>.</>
               : <>Your payment is under review. Admin will verify and confirm your slot for <span className="text-[#F2AA00]">{tournament?.name}</span>.</>
             }
           </p>
@@ -739,7 +778,7 @@ export default function RegisterPage() {
           <div className="flex flex-col gap-3 mt-4">
             <button
               onClick={() => router.push("/my-matches")}
-              className="w-full flex items-center justify-center gap-2 bg-[#F2AA00] text-black py-3 rounded-xl text-sm tracking-widest font-semibold hover:bg-[#e09e00] transition-all"
+              className="w-full flex items-center justify-center gap-2 bg-[#F2AA00] text-black py-3 rounded-xl text-sm tracking-widest  hover:bg-[#e09e00] transition-all"
             >
               <FontAwesomeIcon icon={faArrowRight} className="text-xs" />
               Check My Matches
@@ -804,7 +843,7 @@ export default function RegisterPage() {
                       onClick={() => applyPreviousTeam(t.team_name)}
                       className={`px-3 py-1.5 rounded-lg text-xs tracking-wide border transition-all ${
                         selectedTeam === t.team_name
-                          ? "bg-[#F2AA00] text-black border-[#F2AA00] font-semibold"
+                          ? "bg-[#F2AA00] text-black border-[#F2AA00] "
                           : "border-gray-700 text-gray-300 hover:border-[#F2AA00]/50 hover:text-white bg-black/40"
                       }`}
                     >
@@ -1079,8 +1118,8 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Points Table */}
-            <PointsTable mode={tournament.mode?.toLowerCase() ?? "squad"} />
+            {/* ✅ UPDATED: Points Table now uses pointsConfig */}
+            <PointsTable mode={tournament.mode?.toLowerCase() ?? "team"} pointsConfig={pointsConfig} />
 
             {/* Map pool */}
             <div className="bg-[#0b0b0b] border border-gray-800 rounded-xl p-4">

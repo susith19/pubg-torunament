@@ -26,6 +26,7 @@ const navItems = [
   { label: "Social Media Live",href: "/admin/social-media", icon: faShieldHalved    },
   { label: "Teams",           href: "/admin/teams",          icon: faUsers           },
   { label: "Points",          href: "/admin/points/winning", icon: faCoins           },
+  { label: "Points Settings", href: "/admin/points-config",   icon: faCoins           },
   { label: "Users",           href: "/admin/users",          icon: faUser            },
   { label: "Payments",        href: "/admin/payment",        icon: faCreditCard      },
   { label: "Redeems",         href: "/admin/redeems",        icon: faMoneyBillTransfer },
