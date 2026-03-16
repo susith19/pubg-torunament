@@ -1,6 +1,7 @@
-// app/api/admin/points-config/route.ts
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 // GET - Fetch current config
 export async function GET() {
