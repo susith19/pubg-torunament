@@ -484,7 +484,7 @@ export default function RegisterPage() {
           // Extract placement and kill_points from the response
           const config: PointsConfig = {
             placement: data.pointsConfig?.placement || data.placement || {},
-            kill_points: data.pointsConfig?.kill_points || data.kill_points || 5,
+            kill_points: data.pointsConfig?.kill_points ?? data.kill_points ?? 5,
           };
           setPointsConfig(config);
         } else {
